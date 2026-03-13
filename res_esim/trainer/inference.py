@@ -4,14 +4,16 @@ import torch
 LABEL2IDX = {'entailment': 0, 'neutral': 1, 'contradiction': 2}
 IDX2LABEL = {v: k for k, v in LABEL2IDX.items()}
 
-def predict(model, loader, device):
+def predict(encoder, classifier, loader, device):
     """
     Run Inference on loader data.
     Returns a list of predicted output.
     --> TODO: ADD CLASSIFICATION ABILITY
     """
     
-    model.eval()
+    encoder.eval()
+    classifier.eval()
+    
     all_preds = []
     
     with torch.no_grad():
@@ -23,8 +25,12 @@ def predict(model, loader, device):
             hyp_length        = batch['hyp_length'].to(device)          # (batch,)
             
             # --- Forward Pass -----------------------------
-            logits = model(premise_embedding, hyp_embedding, premise_length, hyp_length)  # (batch, num_classes)
-            preds = torch.argmax(logits, dim=-1)  # (batch,)
+            h_p, h_h, mask_p, mask_h = encoder(
+                premise_embedding, hyp_embedding, premise_length, hyp_length
+            )
+            
+            logits = classifier(h_p, h_h, mask_p, mask_h)
+            preds = logits.argmax(dim=-1)
             all_preds.extend([IDX2LABEL[p.item()] for p in preds])
         
         return all_preds
