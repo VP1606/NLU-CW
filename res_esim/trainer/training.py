@@ -26,11 +26,10 @@ def get_warmup_decay_scheduler(optimizer, warmup_steps, total_steps):
 
 
 # --- Training Step (One Epoch) --------------------------
-def train_epoch(encoder, classifier, loader, optimizer, scheduler, criterion, device):
-    # Runs one full pass over training set, on both encoder & classifier.
+def train_epoch(oracle, loader, optimizer, scheduler, criterion, device):
+    # Runs one full pass over training set, on unified OracleNet.
 
-    encoder.train()
-    classifier.train()
+    oracle.train()
 
     total_loss = 0.0
     all_preds, all_labels = [], []
@@ -46,13 +45,10 @@ def train_epoch(encoder, classifier, loader, optimizer, scheduler, criterion, de
 
         optimizer.zero_grad()
 
-        # --- Forward Pass on RES-SIM ------------------
-        h_p, h_h, mask_p, mask_h = encoder(
-            premise_embedding, hyp_embedding, mask_p, mask_h
+        # --- Forward Pass on Oracle ------------------
+        logits = oracle(
+            premise_embedding, hyp_embedding, premise_length, hyp_length
         )
-
-        # --- Forward Pass on Classifier ---------------
-        logits = classifier(h_p, h_h, mask_p, mask_h)
         loss = criterion(logits, labels)
 
         # --- Back Propogation -------------------------
@@ -60,7 +56,7 @@ def train_epoch(encoder, classifier, loader, optimizer, scheduler, criterion, de
 
         ## Gradient Clipping
         nn.utils.clip_grad_norm_(
-            list(enocoder.parameters()) + list(classifier.parameters()),
+            oracle.parameters(),
             max_norm=1.0
         )
 

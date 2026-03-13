@@ -4,18 +4,16 @@ import torch
 LABEL2IDX = {'entailment': 0, 'neutral': 1, 'contradiction': 2}
 IDX2LABEL = {v: k for k, v in LABEL2IDX.items()}
 
-def predict(encoder, classifier, loader, device):
+def predict(oracle, loader, device):
     """
     Run Inference on loader data.
     Returns a list of predicted output.
-    --> TODO: ADD CLASSIFICATION ABILITY
     """
-    
-    encoder.eval()
-    classifier.eval()
-    
+
+    oracle.eval()
+
     all_preds = []
-    
+
     with torch.no_grad():
         for batch in loader:
             # --- Unpack & Move to Device ------------------
@@ -23,14 +21,13 @@ def predict(encoder, classifier, loader, device):
             hyp_embedding     = batch['hyp_embedding'].to(device)       # (batch, len
             premise_length    = batch['premise_length'].to(device)      # (batch,)
             hyp_length        = batch['hyp_length'].to(device)          # (batch,)
-            
+
             # --- Forward Pass -----------------------------
-            h_p, h_h, mask_p, mask_h = encoder(
+            logits = oracle(
                 premise_embedding, hyp_embedding, premise_length, hyp_length
             )
-            
-            logits = classifier(h_p, h_h, mask_p, mask_h)
+
             preds = logits.argmax(dim=-1)
             all_preds.extend([IDX2LABEL[p.item()] for p in preds])
-        
+
         return all_preds
