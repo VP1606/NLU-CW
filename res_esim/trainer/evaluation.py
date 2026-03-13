@@ -2,13 +2,15 @@ import torch
 
 from sklearn.metrics import f1_score
 
-def evaluate(model, loader, criterion, device):
+def evaluate(encoder, classifier, loader, criterion, device):
     """
     Evaluate on dev set. 
     Returns loss, accuracy, macro-F1.
     """
     
-    model.eval()
+    encoder.eval()
+    classifier.eval()
+    
     total_loss = 0.0
     all_preds, all_labels = [], []
     
@@ -23,7 +25,11 @@ def evaluate(model, loader, criterion, device):
             labels            = batch['labels'].to(device)              # (batch,)
             
             # --- Forward Pass -----------------------------
-            logits = model(premise_embedding, hyp_embedding, premise_length, hyp_length)  # (batch, num_classes)
+            h_p, h_h, mask_p, mask_h = encoder(
+                premise_embedding, hyp_embedding, premise_length, hyp_length
+            )
+            
+            logits = classifier(h_p, h_h, mask_p, mask_h)
             loss = criterion(logits, labels)
             
             total_loss += loss.item() * labels.size(0)
