@@ -6,7 +6,7 @@ class ESIMBlock(nn.Module):
     def __init__(self, hidden_dim: int, dropout_rate: float):
         super().__init__()
         self.hidden_dim = hidden_dim
-        
+
         # Shared BI-LSTM for Premise & Hypothesis as per paper.
         # Use //2 for hidden dimension - doubles for both directions.
         self.shared_bilstm = nn.LSTM(
@@ -16,19 +16,19 @@ class ESIMBlock(nn.Module):
             bidirectional=True,
             batch_first=True
         )
-        
+
         # FFN: 4*hidden_dim -> hidden_dim
         self.ffn = nn.Sequential(
             nn.Linear(4 * hidden_dim, hidden_dim),
             nn.ReLU(),
         )
-        
+
         # LayerNorm per stream
         self.layer_norm_p = nn.LayerNorm(hidden_dim)
         self.layer_norm_h = nn.LayerNorm(hidden_dim)
-        
+
         self.dropout = nn.Dropout(dropout_rate)
-        
+
     # ── Attention ─────────────────────────────────────────────────────────────
     def _soft_dot_attention(self, h_p, h_h, mask_p, mask_h):
         """
@@ -50,32 +50,32 @@ class ESIMBlock(nn.Module):
             h_p_att : (batch, len_p, hidden_dim)  attended premise
             h_h_att : (batch, len_h, hidden_dim)  attended hypothesis
         """
-        
+
         # Similarity Matrix: E_ij = h_p[b, i] * h_h[b, j]
         e = torch.bmm(h_p, h_h.transpose(1, 2))  # (batch, len_p, len_h)
-        
+
         # Mask Padding: in hypothesis - affects premise attending to hypothesis.
         if mask_h is not None:
             e = e.masked_fill(mask_h.unsqueeze(1), float('-inf'))  # (batch, len_p, len_h)
-        
+
         # Mask Padding: in premise - affects hypothesis attending to premise.
         e_t = e.clone()
         if mask_p is not None:
             e_t = e_t.masked_fill(mask_p.unsqueeze(2), float('-inf'))  # (batch, len_p, len_h)
-        
+
         # Attending: Premise attends to hypothesis - softmax over len_h.
         alpha = F.softmax(e, dim=2) # (batch, len_p, len_h)
         h_p_att = torch.bmm(alpha, h_h)  # (batch, len_p, hidden_dim)
-        
+
         # Attending: Hypothesis attends to premise - softmax over len_p.
         beta = F.softmax(e_t, dim=1)  # (batch, len_p, len_h)
         h_h_att = torch.bmm(beta.transpose(1, 2), h_p)  # (batch, len_h, hidden_dim)
-        
+
         return h_p_att, h_h_att
 
     # ── Enhancement ───────────────────────────────────────────────────────────
     @staticmethod
-    def _enhance(self, h, h_att):
+    def _enhance(h, h_att):
         """
         Compute the enhancement vector (equations 11–12 in paper):
             m = [h, h_att, h − h_att, h * h_att]
@@ -90,7 +90,7 @@ class ESIMBlock(nn.Module):
             m : (batch, len, 4 * hidden_dim)
         """
         return torch.cat([h, h_att, h - h_att, h * h_att], dim=-1)
-    
+
     # ── Forward ───────────────────────────────────────────────────────────────
     def forward(self, h_p, h_h, mask_p=None, mask_h=None):
         """
@@ -109,11 +109,11 @@ class ESIMBlock(nn.Module):
         residual_h = h_h
 
         # ── 1. BiLSTM encoding ───────────────────────────────────────────────
-        enc_p, _ = self.bilstm(self.dropout(h_p))  # (batch, len_p, hidden_dim)
-        enc_h, _ = self.bilstm(self.dropout(h_h))  # (batch, len_h, hidden_dim)
+        enc_p, _ = self.shared_bilstm(self.dropout(h_p))  # (batch, len_p, hidden_dim)
+        enc_h, _ = self.shared_bilstm(self.dropout(h_h))  # (batch, len_h, hidden_dim)
 
         # ── 2. Cross-sentence attention ──────────────────────────────────────
-        att_p, att_h = self._cross_attention(enc_p, enc_h, mask_p, mask_h)
+        att_p, att_h = self._soft_dot_attention(enc_p, enc_h, mask_p, mask_h)
 
         # ── 3. Enhancement ───────────────────────────────────────────────────
         m_p = self._enhance(enc_p, att_p)          # (batch, len_p, 4*hidden_dim)
