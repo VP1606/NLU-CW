@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+# TODO: Look into NaN values appearing in simulation testing: may not appear in real data, but this must be checked and solved.
+
 class ESIMBlock(nn.Module):
     def __init__(self, hidden_dim: int, dropout_rate: float):
         super().__init__()
@@ -65,10 +67,28 @@ class ESIMBlock(nn.Module):
 
         # Attending: Premise attends to hypothesis - softmax over len_h.
         alpha = F.softmax(e, dim=2) # (batch, len_p, len_h)
+
+        # DEBUG: Check for NaN in alpha
+        if torch.isnan(alpha).any():
+            print(f"[DEBUG] NaN detected in alpha (premise attending to hypothesis)!")
+            print(f"        mask_h shape: {mask_h.shape if mask_h is not None else None}")
+            print(f"        mask_h sum per sequence: {mask_h.sum(dim=1) if mask_h is not None else None}")
+            print(f"        e shape: {e.shape}, e min: {e.min():.4f}, e max: {e.max():.4f}")
+            print(f"        Number of all-inf rows in e: {(e == float('-inf')).all(dim=2).sum()}")
+
         h_p_att = torch.bmm(alpha, h_h)  # (batch, len_p, hidden_dim)
 
         # Attending: Hypothesis attends to premise - softmax over len_p.
         beta = F.softmax(e_t, dim=1)  # (batch, len_p, len_h)
+
+        # DEBUG: Check for NaN in beta
+        if torch.isnan(beta).any():
+            print(f"[DEBUG] NaN detected in beta (hypothesis attending to premise)!")
+            print(f"        mask_p shape: {mask_p.shape if mask_p is not None else None}")
+            print(f"        mask_p sum per sequence: {mask_p.sum(dim=1) if mask_p is not None else None}")
+            print(f"        e_t shape: {e_t.shape}, e_t min: {e_t.min():.4f}, e_t max: {e_t.max():.4f}")
+            print(f"        Number of all-inf columns in e_t: {(e_t == float('-inf')).all(dim=1).sum()}")
+
         h_h_att = torch.bmm(beta.transpose(1, 2), h_p)  # (batch, len_h, hidden_dim)
 
         return h_p_att, h_h_att
