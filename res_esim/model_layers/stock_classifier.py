@@ -25,6 +25,8 @@ Pipeline (per the paper):
   Softmax → class probabilities
 """
 
+# TODO: Look into NaN values appearing in simulation testing: may not appear in real data, but this must be checked and solved.
+
 import torch
 import torch.nn as nn
 
@@ -82,6 +84,18 @@ class StockClassifier(nn.Module):
         v_p_max = self._masked_max_pool(v_p, mask_p)  # (batch, hidden_dim)
         v_h_max = self._masked_max_pool(v_h, mask_h)  # (batch, hidden_dim)
 
+        # DEBUG: Check for -inf or NaN in pooled values
+        if torch.isinf(v_p_max).any() or torch.isinf(v_h_max).any():
+            print(f"[DEBUG] -inf detected in max pooling!")
+            print(f"        v_p_max has -inf: {torch.isinf(v_p_max).any()}")
+            print(f"        v_h_max has -inf: {torch.isinf(v_h_max).any()}")
+            print(f"        mask_p all True (fully masked): {mask_p.all(dim=1).any()}")
+            print(f"        mask_h all True (fully masked): {mask_h.all(dim=1).any()}")
+        if torch.isnan(v_p_max).any() or torch.isnan(v_h_max).any():
+            print(f"[DEBUG] NaN detected in max pooling!")
+            print(f"        v_p_max has NaN: {torch.isnan(v_p_max).any()}")
+            print(f"        v_h_max has NaN: {torch.isnan(v_h_max).any()}")
+
         # --- Concatenation (equation 23)----------------------------------------
         # v = [vp,max; vh,max; vp,max − vh,max; vp,max ∗ vh,max]
         v = torch.cat([
@@ -91,6 +105,13 @@ class StockClassifier(nn.Module):
             v_p_max * v_h_max
         ], dim=-1)  # (batch, 4*hidden_dim)
 
+        # DEBUG: Check concatenated vector
+        if torch.isnan(v).any() or torch.isinf(v).any():
+            print(f"[DEBUG] NaN/inf in concatenated vector v!")
+            print(f"        NaN: {torch.isnan(v).any()}, inf: {torch.isinf(v).any()}")
+            print(f"        v_p_max range: [{v_p_max.min():.4f}, {v_p_max.max():.4f}]")
+            print(f"        v_h_max range: [{v_h_max.min():.4f}, {v_h_max.max():.4f}]")
+
         # --- FFN (equation 24) ------------------------------------------------
         # ypred = softmax(ReLU (vW4 + b4)W5) + b5)
         # == softmax(W5[ReLU(W4[v])])
@@ -98,5 +119,10 @@ class StockClassifier(nn.Module):
         y_pred = self.W5_linear(
             torch.relu(self.W4_linear(self.dropout(v)))
         )
+
+        # DEBUG: Check final logits
+        if torch.isnan(y_pred).any() or torch.isinf(y_pred).any():
+            print(f"[DEBUG] NaN/inf in final logits!")
+            print(f"        NaN: {torch.isnan(y_pred).any()}, inf: {torch.isinf(y_pred).any()}")
 
         return y_pred

@@ -71,7 +71,7 @@ def train_epoch(oracle, loader, optimizer, scheduler, criterion, device):
 
     # --- Training Loss Calculation ---------------------
     avg_loss = total_loss / len(loader)
-    accuracy = sum(p == l for p, l in zip(all_preds, all_labels)) // len(all_labels)
+    accuracy = sum(p == l for p, l in zip(all_preds, all_labels)) / len(all_labels)
     macro_f1 = f1_score(all_labels, all_preds, average="macro")
 
     return avg_loss, accuracy, macro_f1
