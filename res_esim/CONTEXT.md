@@ -62,6 +62,10 @@ res_esim/
 │   ├── training.py            # Training loop with warmup/decay scheduler
 │   ├── evaluation.py          # Evaluation metrics (loss, accuracy, F1)
 │   └── inference.py           # Prediction interface
+├── tests/
+│   ├── test_training.py       # Single-epoch training test with synthetic data
+│   └── README.md              # Test documentation
+├── CONTEXT.md                 # This file
 └── Residual_Connected_Enhanced_Sequential_Inference_Model_for_Natural_Language_Inference.pdf
 ```
 
@@ -70,11 +74,20 @@ res_esim/
 #### 1. **ESIMBlock** (`esim_block.py`)
 **Purpose**: Single ESIM block with attention, enhancement, and residual connection
 
+**Status**: ✅ All naming bugs fixed, ⚠️ NaN issue present
+
+**Fixed Issues**:
+- ✅ Consistent naming: uses `self.shared_bilstm` throughout
+- ✅ Method name: uses `_soft_dot_attention` throughout
+- ✅ `_enhance` is correctly @staticmethod without `self` parameter
+
 **Current Issues**:
-- ❌ Line 12: Defines `self.shared_bilstm` but calls `self.bilstm` (line 112)
-- ❌ Line 33: Defines `_soft_dot_attention` but calls `_cross_attention` (line 116)
-- ❌ Line 78: `_enhance` is @staticmethod but has `self` parameter (incorrect)
-- ❌ Line 119: Calls `_enhance(enc_p, att_p)` but method signature expects `(self, h, h_att)`
+- ⚠️ **CRITICAL: NaN in softmax** - Using `float('-inf')` for masking causes NaN when entire rows/columns are masked
+  - Affects ~143/400 positions in testing (36% of attention computations)
+  - First appears in `beta` (hypothesis attending to premise)
+  - Propagates through entire network causing NaN loss
+  - **Solution**: Replace `-inf` with large negative value (e.g., `-1e9`) or use `pack_padded_sequence`
+- 📝 Debug code added at lines 69-75, 79-85 to track NaN propagation
 
 **Expected Flow**:
 ```
@@ -84,8 +97,10 @@ Input: (h_p, h_h) → BiLSTM → Attention → Enhancement → FFN → Residual 
 #### 2. **ResESIM** (`res_esim_block.py`)
 **Purpose**: Stack N ESIM blocks with residual connections
 
-**Current Issues**:
-- ❌ Line 4: Import path `from esim_block import ESIMBlock` should be `from .esim_block import ESIMBlock`
+**Status**: ✅ All issues fixed
+
+**Fixed Issues**:
+- ✅ Line 4: Correct relative import `from .esim_block import ESIMBlock`
 
 **Features**:
 ✅ Input projection layer (adapts input_dim to hidden_dim)
@@ -96,8 +111,16 @@ Input: (h_p, h_h) → BiLSTM → Attention → Enhancement → FFN → Residual 
 #### 3. **StockClassifier** (`stock_classifier.py`)
 **Purpose**: Aggregation BiLSTM + max pooling + FFN classification
 
-**Current Issues**:
-- ❌ Line 44, 52: LSTM parameter should be `hidden_size` not `hidden_dim`
+**Status**: ✅ LSTM params fixed, 📝 Debug code added
+
+**Fixed Issues**:
+- ✅ Lines 44, 52: Correct LSTM parameter `hidden_size`
+
+**Debug Additions**:
+- 📝 Lines 88-95: Debug checks for -inf/NaN in max pooling
+- 📝 Lines 106-110: Debug checks for NaN/inf in concatenated vector
+- 📝 Lines 118-120: Debug checks for NaN/inf in final logits
+- 📝 Line 28: TODO comment about NaN issue
 
 **Features**:
 ✅ Separate BiLSTMs for premise and hypothesis (as per paper)
@@ -109,9 +132,11 @@ Input: (h_p, h_h) → BiLSTM → Attention → Enhancement → FFN → Residual 
 #### 4. **OracleNet** (`oracle_net.py`)
 **Purpose**: Unified end-to-end model combining encoder and classifier
 
-**Current Issues**:
-- ❌ Line 11: Import typo `stock_classifer` should be `stock_classifier`
-- ❌ Line 45: Typo `self.classifer` should be `self.classifier`
+**Status**: ✅ All issues fixed
+
+**Fixed Issues**:
+- ✅ Lines 10-11: Correct imports with relative paths
+- ✅ Line 45: Correct attribute name `self.classifier`
 
 **Architecture**:
 ```python
@@ -122,6 +147,10 @@ ResESIM (encoder) → (h_p, h_h, mask_p, mask_h)
 StockClassifier → logits
 ```
 
+**Model Stats** (with default hyperparameters):
+- Total parameters: 3,484,503
+- Trainable parameters: 3,484,503
+
 #### 5. **Training Infrastructure** (`trainer/`)
 
 **training.py**:
@@ -130,9 +159,16 @@ StockClassifier → logits
 ✅ One-epoch training function
 ✅ Metrics: loss, accuracy, macro-F1
 
+**Known Issues**:
+- ⚠️ **Line 74: Accuracy calculation bug** - Uses integer division (`//`) instead of float division (`/`)
+  - Results in 0.00% accuracy even when predictions are correct
+  - Example: 5 correct out of 32 → `5 // 32 = 0` instead of `5 / 32 = 0.15625`
+  - **Fix**: Change `//` to `/` on line 74
+
 **evaluation.py**:
 ✅ Evaluation on dev set
 ✅ Returns loss, accuracy, macro-F1
+⚠️ Note: Label key in batch is `'labels'` (differs from training.py)
 
 **inference.py**:
 ✅ Prediction function
@@ -206,20 +242,90 @@ Expected batch structure:
 
 ---
 
+## Testing Results & Known Issues
+
+### Test Setup
+- **Test script**: `tests/test_training.py`
+- **Dataset**: 32 synthetic samples, batch size 8
+- **Model**: OracleNet with 2 ESIM blocks, hidden_dim=300
+- **Status**: Model initializes and trains, but produces NaN loss
+
+### Test Results (with bugs)
+```
+Average Loss: nan
+Accuracy: 18.75%  (due to integer division bug)
+Macro F1: 0.1053
+```
+
+### Critical Issue: NaN in Attention Softmax
+
+**Root Cause**:
+- Using `float('-inf')` for padding mask in attention mechanism
+- When entire rows/columns are masked to -inf, `softmax([-inf, -inf, ...])` → **NaN**
+- Observed: ~143/400 positions (36%) have all-inf rows/columns in first batch
+- NaN first appears in `beta` (hypothesis attending to premise) in first ESIM block
+- Propagates through entire network
+
+**Debug Output Analysis**:
+```
+[DEBUG] NaN detected in beta (hypothesis attending to premise)!
+        mask_p sum per sequence: tensor([19, 34, 27, 20, 29, 32, 36, 13])
+        Number of all-inf columns in e_t: 143
+```
+
+**Why This Happens**:
+1. BiLSTM processes padding positions (no `pack_padded_sequence` used)
+2. BiLSTM hidden states propagate even for padding tokens
+3. Some BiLSTM outputs for padding become problematic values
+4. Combined with aggressive -inf masking → all-inf rows/columns
+5. Softmax on all-inf → NaN
+
+**Proposed Solutions** (in priority order):
+1. ✅ **Replace `-inf` with `-1e9`** (simple, immediate fix)
+   - Large negative value achieves same masking effect
+   - Avoids division by zero in softmax
+   - No architectural changes needed
+
+2. 🔄 **Use `pack_padded_sequence`** (better solution)
+   - Properly tells BiLSTM to skip padding positions
+   - More memory efficient
+   - Requires changing BiLSTM forward pass in both ESIM and classifier
+
+3. 🔄 **Add epsilon to softmax** (workaround)
+   - Replace NaN values with zeros after detection
+   - Less elegant, treats symptom not cause
+
+### Secondary Issue: Accuracy Calculation
+
+**Bug**: `trainer/training.py` line 74 uses integer division
+```python
+accuracy = sum(p == l for p, l in zip(all_preds, all_labels)) // len(all_labels)
+```
+
+**Result**: Always shows 0.00% accuracy unless > 50% correct
+
+**Fix**: Change `//` to `/`
+
+---
+
 ## Next Steps
 
 ### Immediate Fixes Required:
-1. **Fix ESIMBlock bugs** (attribute name mismatches, method signatures)
-2. **Fix import paths** (relative imports in res_esim_block.py)
-3. **Fix typos** (stock_classifier import, LSTM parameter names)
-4. **Standardize batch keys** (`'label'` vs `'labels'`)
+1. ✅ **Fix ESIMBlock bugs** - DONE (naming, method signatures)
+2. ✅ **Fix import paths** - DONE (relative imports)
+3. ✅ **Fix typos** - DONE (stock_classifier import, LSTM parameters)
+4. 🔧 **Fix NaN issue** - Replace `-inf` with `-1e9` in attention masking
+5. 🔧 **Fix accuracy calculation** - Change `//` to `/` in training.py line 74
+6. 🔧 **Standardize batch keys** (`'label'` vs `'labels'`)
 
 ### Future Work:
 1. **Replace BERT with ELMo** embeddings
-2. **Add data loading pipeline** for SNLI/MultiNLI
-3. **Implement full training script** with checkpointing
-4. **Hyperparameter tuning** (number of blocks, hidden dimension)
-5. **Add model evaluation** on test sets
+2. **Implement `pack_padded_sequence`** for proper padding handling
+3. **Add data loading pipeline** for SNLI/MultiNLI
+4. **Implement full training script** with checkpointing
+5. **Hyperparameter tuning** (number of blocks, hidden dimension)
+6. **Add model evaluation** on test sets
+7. **Remove debug print statements** once issues are resolved
 
 ---
 
