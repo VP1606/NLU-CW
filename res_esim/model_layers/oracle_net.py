@@ -1,14 +1,14 @@
 """
 OracleNet
 
-Full Stack structure, combining both encoder and classifer into one unified model architecture.
+Full Stack structure, combining both encoder and classifier into one unified model architecture.
 """
 
 import torch
 import torch.nn as nn
 
-from res_esim_block import ResESIM
-from stock_classifer import StockClassifier
+from .res_esim_block import ResESIM
+from .stock_classifier import StockClassifier
 
 class OracleNet(nn.Module):
     def __init__(
@@ -42,4 +42,4 @@ class OracleNet(nn.Module):
             premise_embedding, hyp_embedding, premise_length, hyp_length
         )
 
-        return self.classifer(h_p, h_h, mask_p, mask_h)
+        return self.classifier(h_p, h_h, mask_p, mask_h)
