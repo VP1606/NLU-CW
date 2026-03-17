@@ -1,2 +1,7 @@
 .DS_Store
 venv
+bin/
+data/
+output/
+venv39/
+*.pyc
