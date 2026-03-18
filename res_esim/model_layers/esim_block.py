@@ -56,38 +56,20 @@ class ESIMBlock(nn.Module):
         # Similarity Matrix: E_ij = h_p[b, i] * h_h[b, j]
         e = torch.bmm(h_p, h_h.transpose(1, 2))  # (batch, len_p, len_h)
 
-        # Mask Padding: in hypothesis - affects premise attending to hypothesis.
-        if mask_h is not None:
-            e = e.masked_fill(mask_h.unsqueeze(1), float('-inf'))  # (batch, len_p, len_h)
+        # alpha: premise attends to hypothesis — mask hypothesis padding (columns).
+        e_alpha = e.masked_fill(mask_h.unsqueeze(1), float('-inf')) if mask_h is not None else e
 
-        # Mask Padding: in premise - affects hypothesis attending to premise.
-        e_t = e.clone()
-        if mask_p is not None:
-            e_t = e_t.masked_fill(mask_p.unsqueeze(2), float('-inf'))  # (batch, len_p, len_h)
+        # beta: hypothesis attends to premise — mask premise padding (rows).
+        # Use a fresh copy so mask_h's -inf columns don't cause NaN in beta for pad hypothesis positions.
+        e_beta = e.masked_fill(mask_p.unsqueeze(2), float('-inf')) if mask_p is not None else e
 
         # Attending: Premise attends to hypothesis - softmax over len_h.
-        alpha = F.softmax(e, dim=2) # (batch, len_p, len_h)
-
-        # DEBUG: Check for NaN in alpha
-        if torch.isnan(alpha).any():
-            print(f"[DEBUG] NaN detected in alpha (premise attending to hypothesis)!")
-            print(f"        mask_h shape: {mask_h.shape if mask_h is not None else None}")
-            print(f"        mask_h sum per sequence: {mask_h.sum(dim=1) if mask_h is not None else None}")
-            print(f"        e shape: {e.shape}, e min: {e.min():.4f}, e max: {e.max():.4f}")
-            print(f"        Number of all-inf rows in e: {(e == float('-inf')).all(dim=2).sum()}")
+        alpha = F.softmax(e_alpha, dim=2) # (batch, len_p, len_h)
 
         h_p_att = torch.bmm(alpha, h_h)  # (batch, len_p, hidden_dim)
 
         # Attending: Hypothesis attends to premise - softmax over len_p.
-        beta = F.softmax(e_t, dim=1)  # (batch, len_p, len_h)
-
-        # DEBUG: Check for NaN in beta
-        if torch.isnan(beta).any():
-            print(f"[DEBUG] NaN detected in beta (hypothesis attending to premise)!")
-            print(f"        mask_p shape: {mask_p.shape if mask_p is not None else None}")
-            print(f"        mask_p sum per sequence: {mask_p.sum(dim=1) if mask_p is not None else None}")
-            print(f"        e_t shape: {e_t.shape}, e_t min: {e_t.min():.4f}, e_t max: {e_t.max():.4f}")
-            print(f"        Number of all-inf columns in e_t: {(e_t == float('-inf')).all(dim=1).sum()}")
+        beta = F.softmax(e_beta, dim=1)  # (batch, len_p, len_h)
 
         h_h_att = torch.bmm(beta.transpose(1, 2), h_p)  # (batch, len_h, hidden_dim)
 
