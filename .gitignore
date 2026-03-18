@@ -5,3 +5,6 @@ data/
 output/
 venv39/
 *.pyc
+copy_to_csf.sh
+require310.txt
+require39.txt

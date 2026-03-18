@@ -22,7 +22,7 @@ class HyperParameters:
         self.NUM_CLASSES = 3  # entailment, neutral, contradiction
         self.DROPOUT_RATE = 0.2  # As per paper (SNLI)
 
-        self.NUM_EPOCHS = 30
+        self.NUM_EPOCHS = 15
 
         self.BATCH_SIZE = 8  # Small batch for testing
         self.NUM_SAMPLES = 32  # Small dataset for testing
@@ -86,7 +86,7 @@ def train(
 
     # --- Training Loop ------------------------------------
     best_loss = float("inf")
-    best_meta = {}
+    best_f1 = float("-inf")
 
     epoch_bar = tqdm(range(hyperparameters.NUM_EPOCHS), desc="Epochs", unit="epoch")
     for epoch in epoch_bar:
@@ -103,24 +103,27 @@ def train(
             loss=f"{loss:.4f}", acc=f"{accuracy:.4f}", f1=f"{macro_f1:.4f}"
         )
 
-        if loss < best_loss:
+        if macro_f1 > best_f1:
+            best_f1 = macro_f1
             best_loss = loss
             torch.save(model.state_dict(), out_dir / "best_model.pt")
-            best_meta = {
-                "prem_npy": str(PREM_NPY),
-                "hyp_npy": str(HYP_NPY),
-                "trained_at": datetime.now().isoformat(),
-                "best_epoch": epoch,
-                "best_loss": loss,
-                "best_acc": accuracy,
-                "best_f1": macro_f1,
-            }
-
-    with open(out_dir / "meta.json", "w") as f:
-        json.dump(best_meta, f, indent=2)
+            with open(out_dir / "meta.json", "w") as f:
+                json.dump(
+                    {
+                        "prem_npy": str(PREM_NPY),
+                        "hyp_npy": str(HYP_NPY),
+                        "trained_at": datetime.now().isoformat(),
+                        "best_epoch": epoch,
+                        "best_loss": loss,
+                        "best_acc": accuracy,
+                        "best_f1": macro_f1,
+                    },
+                    f,
+                    indent=2,
+                )
 
     print(f"Best model saved to: {out_dir}")
-    return model, best_loss
+    return model, best_loss, best_f1
 
 
 def initialize_and_train():
@@ -140,11 +143,11 @@ def initialize_and_train():
     model.to(device)
 
     print("starting training....")
-    model, best_loss = train(
+    model, best_loss, best_f1 = train(
         model=model, device=device, hyperparameters=hyper_parameters
     )
 
-    print(f"Training Complete, Best Loss: {best_loss}")
+    print(f"Training Complete, Best Loss: {best_loss}, Best F1: {best_f1}")
     return
 
 
