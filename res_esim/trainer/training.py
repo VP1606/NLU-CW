@@ -2,6 +2,7 @@ from torch.optim.lr_scheduler import LinearLR, SequentialLR
 import torch.nn as nn
 
 from sklearn.metrics import f1_score
+from tqdm import tqdm
 
 # --- LR Scheduler -------------------------------------
 def get_warmup_decay_scheduler(optimizer, warmup_steps, total_steps):
@@ -26,7 +27,7 @@ def get_warmup_decay_scheduler(optimizer, warmup_steps, total_steps):
 
 
 # --- Training Step (One Epoch) --------------------------
-def train_epoch(oracle, loader, optimizer, scheduler, criterion, device):
+def train_epoch(oracle, loader, optimizer, scheduler, criterion, device, epoch=None):
     # Runs one full pass over training set, on unified OracleNet.
 
     oracle.train()
@@ -34,7 +35,9 @@ def train_epoch(oracle, loader, optimizer, scheduler, criterion, device):
     total_loss = 0.0
     all_preds, all_labels = [], []
 
-    for batch in loader:
+    desc = f"Epoch {epoch}" if epoch is not None else "Batch"
+    batch_bar = tqdm(loader, desc=desc, unit="batch", leave=False)
+    for batch in batch_bar:
         # --- Unpack & Move to Device ------------------
         premise_embedding = batch['premise_embedding'].to(device)   # (batch, len_p, input_dim)
         hyp_embedding     = batch['hyp_embedding'].to(device)       # (batch, len
@@ -64,6 +67,7 @@ def train_epoch(oracle, loader, optimizer, scheduler, criterion, device):
         scheduler.step()
 
         total_loss += loss.item()
+        batch_bar.set_postfix(loss=f"{loss.item():.4f}")
         preds = logits.argmax(dim=-1)
 
         all_preds.extend(preds.cpu().tolist())
