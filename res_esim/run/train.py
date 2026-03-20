@@ -17,14 +17,17 @@ from res_esim.model_layers.oracle_net import OracleNet
 class HyperParameters:
     def __init__(self):
         self.INPUT_DIM = 1024
-        self.HIDDEN_DIM = 300  # As per paper
+        self.HIDDEN_DIM = 512  # As per paper
         self.NUM_BLOCKS = 2  # Number of stacked ESIM blocks
         self.NUM_CLASSES = 3  # entailment, neutral, contradiction
         self.DROPOUT_RATE = 0.2  # As per paper (SNLI)
 
-        self.NUM_EPOCHS = 15
+        # Number of attention heads in multi-head attention (ESIM)
+        self.NUM_ATTN_HEADS = 8
 
-        self.BATCH_SIZE = 8  # Small batch for testing
+        self.NUM_EPOCHS = 10
+
+        self.BATCH_SIZE = 16  # Small batch for testing
         self.NUM_SAMPLES = 32  # Small dataset for testing
 
         self.LEARNING_RATE = 1e-4
@@ -117,6 +120,9 @@ def train(
                         "best_loss": loss,
                         "best_acc": accuracy,
                         "best_f1": macro_f1,
+                        "hyperparameters": {
+                            k: v for k, v in vars(hyperparameters).items()
+                        },
                     },
                     f,
                     indent=2,
@@ -134,10 +140,10 @@ def initialize_and_train():
         num_blocks=hyper_parameters.NUM_BLOCKS,
         num_classes=hyper_parameters.NUM_CLASSES,
         dropout_rate=hyper_parameters.DROPOUT_RATE,
+        num_heads=hyper_parameters.NUM_ATTN_HEADS,
     )
 
     device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
-    # device = torch.device("cpu")
     print(f"Training on {device}")
 
     model.to(device)

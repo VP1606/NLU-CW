@@ -10,28 +10,31 @@ import torch.nn as nn
 from .res_esim_block import ResESIM
 from .stock_classifier import StockClassifier
 
+
 class OracleNet(nn.Module):
     def __init__(
         self,
-        input_dim       : int,
-        hidden_dim      : int,
-        num_blocks      : int,
-        num_classes     : int,
-        dropout_rate    : float = 0.2,
+        input_dim: int,
+        hidden_dim: int,
+        num_blocks: int,
+        num_classes: int,
+        num_heads: int = 4,
+        dropout_rate: float = 0.2,
     ):
         super().__init__()
 
         self.encoder = ResESIM(
-            input_dim       = input_dim,
-            hidden_dim      = hidden_dim,
-            num_blocks      = num_blocks,
-            dropout_rate    = dropout_rate,
+            input_dim=input_dim,
+            hidden_dim=hidden_dim,
+            num_blocks=num_blocks,
+            dropout_rate=dropout_rate,
+            num_heads=num_heads,
         )
 
         self.classifier = StockClassifier(
-            hidden_dim      = hidden_dim,
-            n_classes       = num_classes,
-            dropout_rate    = dropout_rate,
+            hidden_dim=hidden_dim,
+            n_classes=num_classes,
+            dropout_rate=dropout_rate,
         )
 
     # --- Unified Forward Pass -----------------------------
