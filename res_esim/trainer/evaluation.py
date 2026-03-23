@@ -21,22 +21,22 @@ def evaluate(oracle, loader, criterion, device):
             premise_length    = batch['premise_length'].to(device)      # (batch,)
             hyp_length        = batch['hyp_length'].to(device)          # (batch,)
 
-            labels            = batch['labels'].to(device)              # (batch,)
+            label             = batch['label'].to(device)              # (batch,)
 
             # --- Forward Pass -----------------------------
             logits = oracle(
                 premise_embedding, hyp_embedding, premise_length, hyp_length
             )
-            loss = criterion(logits, labels)
+            loss = criterion(logits, label)
 
-            total_loss += loss.item() * labels.size(0)
+            total_loss += loss.item() * label.size(0)
             preds = torch.argmax(logits, dim=-1)  # (batch,)
 
             all_preds.extend(preds.cpu().tolist())
-            all_labels.extend(labels.cpu().tolist())
+            all_labels.extend(label.cpu().tolist())
 
     # --- Compute Metrics ---------------------------
-    avg_loss = total_loss / len(loader)
+    avg_loss = total_loss / len(loader.dataset)
     accuracy = sum(p == l for p, l in zip(all_preds, all_labels)) / len(all_labels)
     macro_f1 = f1_score(all_labels, all_preds, average='macro')
 
