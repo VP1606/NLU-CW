@@ -16,9 +16,9 @@ from res_esim.model_layers.oracle_net import OracleNet
 
 class HyperParameters:
     def __init__(self):
-        self.INPUT_DIM = 1024
-        self.HIDDEN_DIM = 512  # As per paper
-        self.NUM_BLOCKS = 2  # Number of stacked ESIM blocks
+        self.INPUT_DIM = 1024 + 1  # +1 for negation flags.
+        self.HIDDEN_DIM = 1024  # As per paper
+        self.NUM_BLOCKS = 5  # Number of stacked ESIM blocks
         self.NUM_CLASSES = 3  # entailment, neutral, contradiction
         self.DROPOUT_RATE = 0.2  # As per paper (SNLI)
 
@@ -51,8 +51,12 @@ def train(
     )
     CSV_PATH = Path("/Users/vpremakantha/Documents/UOM/Y3/NLU/NLU-CW/data/train.csv")
 
+    NEGATION_PATH = Path(
+        "/Users/vpremakantha/Documents/UOM/Y3/NLU/NLU-CW/output/train_negation.pt"
+    )
+
     # Dataset
-    dataset = ResESIM_Dataset(PREM_NPY, HYP_NPY, CSV_PATH)
+    dataset = ResESIM_Dataset(PREM_NPY, HYP_NPY, CSV_PATH, negation_path=NEGATION_PATH)
     hyperparameters.NUM_SAMPLES = len(dataset)
     hyperparameters.TOTAL_STEPS = (
         hyperparameters.NUM_SAMPLES // hyperparameters.BATCH_SIZE
