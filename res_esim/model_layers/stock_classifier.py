@@ -60,7 +60,7 @@ class StockClassifier(nn.Module):
         # --- Classification FFN ------------------------------------------------
         self.dropout = nn.Dropout(dropout_rate)
 
-        self.W4_linear = nn.Linear(4 * hidden_dim, hidden_dim)
+        self.W4_linear = nn.Linear(6 * hidden_dim, hidden_dim)
         self.W5_linear = nn.Linear(hidden_dim, n_classes)
 
     # --- Utilities ---------------------------------------------------------------
@@ -72,6 +72,24 @@ class StockClassifier(nn.Module):
         tensor = tensor.masked_fill(mask.unsqueeze(-1), float('-inf'))
         return tensor.max(dim=1).values
 
+    @staticmethod
+    def _masked_mean_pool(tensor, mask):
+        """
+        Mean Pool over sequence dimension, ignoring padding positions.
+
+        Args:
+            tensor : (batch, seq_len, hidden_dim)
+            mask   : (batch, seq_len)  True = padding
+
+        Returns:
+            (batch, hidden_dim)
+        """
+        # Zero out padding positions before summing
+        tensor = tensor.masked_fill(mask.unsqueeze(-1), 0.0)
+        # Count actual (non-padding) tokens per sequence, clamp to avoid /0
+        lengths = (~mask).sum(dim=1, keepdim=True).clamp(min=1).float()  # (batch, 1)
+        return tensor.sum(dim=1) / lengths  # (batch, hidden_dim)
+
     # --- Forward Pass -----------------------------------------------------------
     def forward(self, h_p, h_h, mask_p, mask_h):
         # Returns: LOGITS: (batch, n_classes)
@@ -80,37 +98,24 @@ class StockClassifier(nn.Module):
         v_p, _ = self._bilstm_premise(h_p)  # (batch, seq_len, hidden_dim)
         v_h, _ = self._bilstm_hyp(h_h)      # (batch, seq_len, hidden_dim)
 
-        # --- Masked Max Pooling ------------------------------------------------
-        v_p_max = self._masked_max_pool(v_p, mask_p)  # (batch, hidden_dim)
-        v_h_max = self._masked_max_pool(v_h, mask_h)  # (batch, hidden_dim)
+        # --- Masked Max & Mean Pooling -----------------------------------------
+        v_p_max  = self._masked_max_pool(v_p, mask_p)   # (batch, hidden_dim)
+        v_h_max  = self._masked_max_pool(v_h, mask_h)   # (batch, hidden_dim)
+        v_p_mean = self._masked_mean_pool(v_p, mask_p)  # (batch, hidden_dim)
+        v_h_mean = self._masked_mean_pool(v_h, mask_h)  # (batch, hidden_dim)
 
-        # DEBUG: Check for -inf or NaN in pooled values
-        if torch.isinf(v_p_max).any() or torch.isinf(v_h_max).any():
-            print(f"[DEBUG] -inf detected in max pooling!")
-            print(f"        v_p_max has -inf: {torch.isinf(v_p_max).any()}")
-            print(f"        v_h_max has -inf: {torch.isinf(v_h_max).any()}")
-            print(f"        mask_p all True (fully masked): {mask_p.all(dim=1).any()}")
-            print(f"        mask_h all True (fully masked): {mask_h.all(dim=1).any()}")
-        if torch.isnan(v_p_max).any() or torch.isnan(v_h_max).any():
-            print(f"[DEBUG] NaN detected in max pooling!")
-            print(f"        v_p_max has NaN: {torch.isnan(v_p_max).any()}")
-            print(f"        v_h_max has NaN: {torch.isnan(v_h_max).any()}")
-
-        # --- Concatenation (equation 23)----------------------------------------
-        # v = [vp,max; vh,max; vp,max − vh,max; vp,max ∗ vh,max]
+        # --- Concatenation -----------------------------------------------------
+        # v = [vp_max; vp_mean; vh_max; vh_mean; vp_max − vh_max; vp_max ∗ vh_max]
+        # Max captures the most salient features; mean captures the overall context.
+        # Difference and product capture alignment between the two sentences.
         v = torch.cat([
             v_p_max,
+            v_p_mean,
             v_h_max,
+            v_h_mean,
             v_p_max - v_h_max,
-            v_p_max * v_h_max
-        ], dim=-1)  # (batch, 4*hidden_dim)
-
-        # DEBUG: Check concatenated vector
-        if torch.isnan(v).any() or torch.isinf(v).any():
-            print(f"[DEBUG] NaN/inf in concatenated vector v!")
-            print(f"        NaN: {torch.isnan(v).any()}, inf: {torch.isinf(v).any()}")
-            print(f"        v_p_max range: [{v_p_max.min():.4f}, {v_p_max.max():.4f}]")
-            print(f"        v_h_max range: [{v_h_max.min():.4f}, {v_h_max.max():.4f}]")
+            v_p_max * v_h_max,
+        ], dim=-1)  # (batch, 6*hidden_dim)
 
         # --- FFN (equation 24) ------------------------------------------------
         # ypred = softmax(ReLU (vW4 + b4)W5) + b5)
