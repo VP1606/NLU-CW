@@ -34,6 +34,7 @@ from torch.utils.data import Dataset, DataLoader
 # Import from parent module (res_esim)
 from model_layers.oracle_net import OracleNet
 from trainer.training import train_epoch, get_warmup_decay_scheduler
+from trainer.evaluation import evaluate
 
 
 # ── Synthetic Dataset ────────────────────────────────────────────────────────
@@ -212,6 +213,27 @@ def test_single_epoch_training():
         print(f"          - Average Loss: {avg_loss:.4f}")
         print(f"          - Accuracy: {accuracy:.2%}")
         print(f"          - Macro F1: {macro_f1:.4f}")
+
+        # ── Test Evaluation ──────────────────────────────────────────────────
+        print(f"\n[INFO] Testing evaluation on a dev set...")
+        dev_dataset = SyntheticNLIDataset(
+            num_samples=16,
+            input_dim=INPUT_DIM,
+            max_len=MAX_LEN,
+            num_classes=NUM_CLASSES
+        )
+        dev_loader = DataLoader(dev_dataset, batch_size=BATCH_SIZE)
+
+        dev_loss, dev_acc, dev_f1 = evaluate(
+            oracle=model,
+            loader=dev_loader,
+            criterion=criterion,
+            device=device
+        )
+
+        print(f"          - Dev Loss: {dev_loss:.4f}")
+        print(f"          - Dev Accuracy: {dev_acc:.2%}")
+        print(f"          - Dev Macro F1: {dev_f1:.4f}")
 
     except Exception as e:
         print(f"\n[ERROR] Training failed!")

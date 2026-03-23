@@ -9,6 +9,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
+import res_esim.trainer.evaluation as res_esim_eval
 import res_esim.trainer.training as res_esim_trainer
 from res_esim.loader.res_esim_dataset import ResESIM_Dataset
 from res_esim.model_layers.oracle_net import OracleNet
@@ -17,22 +18,22 @@ from res_esim.model_layers.oracle_net import OracleNet
 class HyperParameters:
     def __init__(self):
         self.INPUT_DIM = 1024 + 1  # +1 for negation flags.
-        self.HIDDEN_DIM = 1024  # As per paper
-        self.NUM_BLOCKS = 5  # Number of stacked ESIM blocks
-        self.NUM_CLASSES = 3  # entailment, neutral, contradiction
+        self.HIDDEN_DIM = 512  # As per paper
+        self.NUM_BLOCKS = 3  # Number of stacked ESIM blocks
+        self.NUM_CLASSES = 2  # entailment, neutral, contradiction
         self.DROPOUT_RATE = 0.2  # As per paper (SNLI)
 
         # Number of attention heads in multi-head attention (ESIM)
         self.NUM_ATTN_HEADS = 8
 
-        self.NUM_EPOCHS = 10
+        self.NUM_EPOCHS = 15
 
-        self.BATCH_SIZE = 16  # Small batch for testing
-        self.NUM_SAMPLES = 32  # Small dataset for testing
+        self.BATCH_SIZE = 32  # Small batch for testing
+        self.NUM_SAMPLES: int = 32  # Small dataset for testing
 
         self.LEARNING_RATE = 1e-4
         self.WARMUP_STEPS = 5
-        self.TOTAL_STEPS = self.NUM_SAMPLES // self.BATCH_SIZE  # Steps per epoch
+        self.TOTAL_STEPS: int = self.NUM_SAMPLES // self.BATCH_SIZE  # Steps per epoch
 
 
 def train(
@@ -42,29 +43,42 @@ def train(
 ):
 
     # --- Setup Data Loaders ------------------------------
-    # Paths
-    PREM_NPY = Path(
-        "/Users/vpremakantha/Documents/UOM/Y3/NLU/NLU-CW/output/elmo_train_prem.npy"
-    )
-    HYP_NPY = Path(
-        "/Users/vpremakantha/Documents/UOM/Y3/NLU/NLU-CW/output/elmo_train_hyp.npy"
-    )
-    CSV_PATH = Path("/Users/vpremakantha/Documents/UOM/Y3/NLU/NLU-CW/data/train.csv")
+    # Train Paths
+    PREM_NPY = Path("output/elmo_train_prem.npy")
+    HYP_NPY = Path("output/elmo_train_hyp.npy")
+    CSV_PATH = Path("data/train.csv")
 
-    NEGATION_PATH = Path(
-        "/Users/vpremakantha/Documents/UOM/Y3/NLU/NLU-CW/output/train_negation.pt"
+    NEGATION_PATH = Path("output/train_negation.pt")
+
+    # Dev Paths
+    DEV_PREM_NPY = Path("output/elmo_dev_prem.npy")
+    DEV_HYP_NPY = Path("output/elmo_dev_hyp.npy")
+    DEV_CSV_PATH = Path("data/dev.csv")
+
+    DEV_NEGATION_PATH = Path("output/dev_negation.pt")
+
+    # Datasets
+    train_dataset = ResESIM_Dataset(
+        PREM_NPY, HYP_NPY, CSV_PATH, negation_path=NEGATION_PATH
+    )
+    dev_dataset = ResESIM_Dataset(
+        DEV_PREM_NPY, DEV_HYP_NPY, DEV_CSV_PATH, negation_path=DEV_NEGATION_PATH
     )
 
-    # Dataset
-    dataset = ResESIM_Dataset(PREM_NPY, HYP_NPY, CSV_PATH, negation_path=NEGATION_PATH)
-    hyperparameters.NUM_SAMPLES = len(dataset)
-    hyperparameters.TOTAL_STEPS = (
+    hyperparameters.NUM_SAMPLES = len(train_dataset)
+    hyperparameters.TOTAL_STEPS = hyperparameters.NUM_EPOCHS * (
         hyperparameters.NUM_SAMPLES // hyperparameters.BATCH_SIZE
     )
 
-    # Loader
-    loader = DataLoader(
-        dataset, batch_size=hyperparameters.BATCH_SIZE, shuffle=True, num_workers=0
+    # Loaders
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=hyperparameters.BATCH_SIZE,
+        shuffle=True,
+        num_workers=0,
+    )
+    dev_loader = DataLoader(
+        dev_dataset, batch_size=hyperparameters.BATCH_SIZE, shuffle=False, num_workers=0
     )
 
     # --- Setup Training Components -----------------------
@@ -97,33 +111,41 @@ def train(
 
     epoch_bar = tqdm(range(hyperparameters.NUM_EPOCHS), desc="Epochs", unit="epoch")
     for epoch in epoch_bar:
-        loss, accuracy, macro_f1 = res_esim_trainer.train_epoch(
+        train_loss, train_acc, train_f1 = res_esim_trainer.train_epoch(
             oracle=model,
-            loader=loader,
+            loader=train_loader,
             optimizer=optimizer,
             scheduler=scheduler,
             criterion=criterion,
             device=device,
             epoch=epoch,
         )
-        epoch_bar.set_postfix(
-            loss=f"{loss:.4f}", acc=f"{accuracy:.4f}", f1=f"{macro_f1:.4f}"
+
+        dev_loss, dev_acc, dev_f1 = res_esim_eval.evaluate(
+            oracle=model, loader=dev_loader, criterion=criterion, device=device
         )
 
-        if macro_f1 > best_f1:
-            best_f1 = macro_f1
-            best_loss = loss
+        epoch_bar.set_postfix(t_f1=f"{train_f1:.4f}", d_f1=f"{dev_f1:.4f}")
+
+        if dev_f1 > best_f1:
+            best_f1 = dev_f1
+            best_loss = dev_loss
             torch.save(model.state_dict(), out_dir / "best_model.pt")
             with open(out_dir / "meta.json", "w") as f:
                 json.dump(
                     {
                         "prem_npy": str(PREM_NPY),
                         "hyp_npy": str(HYP_NPY),
+                        "dev_prem_npy": str(DEV_PREM_NPY),
+                        "dev_hyp_npy": str(DEV_HYP_NPY),
                         "trained_at": datetime.now().isoformat(),
                         "best_epoch": epoch,
-                        "best_loss": loss,
-                        "best_acc": accuracy,
-                        "best_f1": macro_f1,
+                        "best_train_loss": train_loss,
+                        "best_train_acc": train_acc,
+                        "best_train_f1": train_f1,
+                        "best_dev_loss": dev_loss,
+                        "best_dev_acc": dev_acc,
+                        "best_dev_f1": dev_f1,
                         "hyperparameters": {
                             k: v for k, v in vars(hyperparameters).items()
                         },
