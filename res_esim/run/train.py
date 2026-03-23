@@ -43,30 +43,19 @@ def train(
 ):
 
     # --- Setup Data Loaders ------------------------------
-    # Paths
-    PREM_NPY = Path(
-        "/Users/vpremakantha/Documents/UOM/Y3/NLU/NLU-CW/output/elmo_train_prem.npy"
-    )
-    HYP_NPY = Path(
-        "/Users/vpremakantha/Documents/UOM/Y3/NLU/NLU-CW/output/elmo_train_hyp.npy"
-    )
-    CSV_PATH = Path("/Users/vpremakantha/Documents/UOM/Y3/NLU/NLU-CW/data/train.csv")
+    # Train Paths
+    PREM_NPY = Path("output/elmo_train_prem.npy")
+    HYP_NPY = Path("output/elmo_train_hyp.npy")
+    CSV_PATH = Path("data/train.csv")
 
-    NEGATION_PATH = Path(
-        "/Users/vpremakantha/Documents/UOM/Y3/NLU/NLU-CW/output/train_negation.pt"
-    )
+    NEGATION_PATH = Path("output/train_negation.pt")
 
     # Dev Paths
-    DEV_PREM_NPY = Path(
-        "/Users/vpremakantha/Documents/UOM/Y3/NLU/NLU-CW/output/elmo_dev_prem.npy"
-    )
-    DEV_HYP_NPY = Path(
-        "/Users/vpremakantha/Documents/UOM/Y3/NLU/NLU-CW/output/elmo_dev_hyp.npy"
-    )
-    DEV_CSV_PATH = Path("/Users/vpremakantha/Documents/UOM/Y3/NLU/NLU-CW/data/dev.csv")
-    DEV_NEGATION_PATH = Path(
-        "/Users/vpremakantha/Documents/UOM/Y3/NLU/NLU-CW/output/dev_negation.pt"
-    )
+    DEV_PREM_NPY = Path("output/elmo_dev_prem.npy")
+    DEV_HYP_NPY = Path("output/elmo_dev_hyp.npy")
+    DEV_CSV_PATH = Path("data/dev.csv")
+
+    DEV_NEGATION_PATH = Path("output/dev_negation.pt")
 
     # Datasets
     train_dataset = ResESIM_Dataset(
