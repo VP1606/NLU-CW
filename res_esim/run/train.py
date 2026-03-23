@@ -17,17 +17,17 @@ from res_esim.model_layers.oracle_net import OracleNet
 class HyperParameters:
     def __init__(self):
         self.INPUT_DIM = 1024 + 1  # +1 for negation flags.
-        self.HIDDEN_DIM = 1024  # As per paper
-        self.NUM_BLOCKS = 5  # Number of stacked ESIM blocks
-        self.NUM_CLASSES = 3  # entailment, neutral, contradiction
+        self.HIDDEN_DIM = 512  # As per paper
+        self.NUM_BLOCKS = 3  # Number of stacked ESIM blocks
+        self.NUM_CLASSES = 2  # entailment, neutral, contradiction
         self.DROPOUT_RATE = 0.2  # As per paper (SNLI)
 
         # Number of attention heads in multi-head attention (ESIM)
         self.NUM_ATTN_HEADS = 8
 
-        self.NUM_EPOCHS = 10
+        self.NUM_EPOCHS = 15
 
-        self.BATCH_SIZE = 16  # Small batch for testing
+        self.BATCH_SIZE = 32  # Small batch for testing
         self.NUM_SAMPLES = 32  # Small dataset for testing
 
         self.LEARNING_RATE = 1e-4
@@ -58,7 +58,7 @@ def train(
     # Dataset
     dataset = ResESIM_Dataset(PREM_NPY, HYP_NPY, CSV_PATH, negation_path=NEGATION_PATH)
     hyperparameters.NUM_SAMPLES = len(dataset)
-    hyperparameters.TOTAL_STEPS = (
+    hyperparameters.TOTAL_STEPS = hyperparameters.NUM_EPOCHS * (
         hyperparameters.NUM_SAMPLES // hyperparameters.BATCH_SIZE
     )
 
