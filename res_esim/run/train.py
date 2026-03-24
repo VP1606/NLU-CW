@@ -17,23 +17,19 @@ from res_esim.model_layers.oracle_net import OracleNet
 
 class HyperParameters:
     def __init__(self):
-        self.INPUT_DIM = 1024 + 1  # +1 for negation flags.
-        self.HIDDEN_DIM = 512  # As per paper
-        self.NUM_BLOCKS = 3  # Number of stacked ESIM blocks
-        self.NUM_CLASSES = 2  # entailment, neutral, contradiction
-        self.DROPOUT_RATE = 0.2  # As per paper (SNLI)
-
-        # Number of attention heads in multi-head attention (ESIM)
+        self.INPUT_DIM = 1477          # was 1024 + 1
+        self.HIDDEN_DIM = 512
+        self.NUM_BLOCKS = 3
+        self.NUM_CLASSES = 2
+        self.DROPOUT_RATE = 0.2
         self.NUM_ATTN_HEADS = 8
-
         self.NUM_EPOCHS = 15
-
-        self.BATCH_SIZE = 32  # Small batch for testing
-        self.NUM_SAMPLES: int = 32  # Small dataset for testing
-
+        self.BATCH_SIZE = 32
+        self.NUM_SAMPLES: int = 24432  # full train set
         self.LEARNING_RATE = 1e-4
-        self.WARMUP_STEPS = 5
-        self.TOTAL_STEPS: int = self.NUM_SAMPLES // self.BATCH_SIZE  # Steps per epoch
+        self.WARMUP_STEPS = 200        # was 5 — proper warmup
+        self.TOTAL_STEPS: int = (self.NUM_SAMPLES // self.BATCH_SIZE) * self.NUM_EPOCHS
+        
 
 
 def train(
@@ -43,42 +39,19 @@ def train(
 ):
 
     # --- Setup Data Loaders ------------------------------
-    # Train Paths
-    PREM_NPY = Path("output/elmo_train_prem.npy")
-    HYP_NPY = Path("output/elmo_train_hyp.npy")
-    CSV_PATH = Path("data/train.csv")
+    TRAIN_PT = Path("output/train_embeddings.pt")   
+    DEV_PT   = Path("output/dev_embeddings.pt")     
 
-    NEGATION_PATH = Path("output/train_negation.pt")
+    train_dataset = ResESIM_Dataset(TRAIN_PT)        
+    dev_dataset   = ResESIM_Dataset(DEV_PT)
 
-    # Dev Paths
-    DEV_PREM_NPY = Path("output/elmo_dev_prem.npy")
-    DEV_HYP_NPY = Path("output/elmo_dev_hyp.npy")
-    DEV_CSV_PATH = Path("data/dev.csv")
-
-    DEV_NEGATION_PATH = Path("output/dev_negation.pt")
-
-    # Datasets
-    train_dataset = ResESIM_Dataset(
-        PREM_NPY, HYP_NPY, CSV_PATH, negation_path=NEGATION_PATH
-    )
-    dev_dataset = ResESIM_Dataset(
-        DEV_PREM_NPY, DEV_HYP_NPY, DEV_CSV_PATH, negation_path=DEV_NEGATION_PATH
-    )
-
-    hyperparameters.NUM_SAMPLES = len(train_dataset)
-    hyperparameters.TOTAL_STEPS = hyperparameters.NUM_EPOCHS * (
-        hyperparameters.NUM_SAMPLES // hyperparameters.BATCH_SIZE
-    )
-
-    # Loaders
     train_loader = DataLoader(
-        train_dataset,
-        batch_size=hyperparameters.BATCH_SIZE,
-        shuffle=True,
-        num_workers=0,
+        train_dataset, batch_size=hyperparameters.BATCH_SIZE,
+        shuffle=True, num_workers=0
     )
     dev_loader = DataLoader(
-        dev_dataset, batch_size=hyperparameters.BATCH_SIZE, shuffle=False, num_workers=0
+        dev_dataset, batch_size=hyperparameters.BATCH_SIZE,
+        shuffle=False, num_workers=0
     )
 
     # --- Setup Training Components -----------------------
@@ -134,10 +107,8 @@ def train(
             with open(out_dir / "meta.json", "w") as f:
                 json.dump(
                     {
-                        "prem_npy": str(PREM_NPY),
-                        "hyp_npy": str(HYP_NPY),
-                        "dev_prem_npy": str(DEV_PREM_NPY),
-                        "dev_hyp_npy": str(DEV_HYP_NPY),
+                        "train_pt": str(TRAIN_PT),
+                        "dev_pt":   str(DEV_PT),
                         "trained_at": datetime.now().isoformat(),
                         "best_epoch": epoch,
                         "best_train_loss": train_loss,
