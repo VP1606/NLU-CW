@@ -6,3 +6,4 @@ venv39/
 *.pyc
 copy_to_csf.sh
 require39.txt
+venv310/
