@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import torch
 from torch.utils.data import Dataset
@@ -15,10 +16,11 @@ MAX_WORD_LEN = 20
 
 class ResESIM_Dataset(Dataset):
     """
-    Dataset with real-time ELMo inference. No pre-computed .npy files.
+    Dataset with pre-computed embeddings (ELMo, GloVe, CharCNN, POS, negation).
 
     Args:
         csv_path  : path to CSV with 'premise', 'hypothesis', 'label' columns
+        elmo_path : path to .npy with pre-computed ELMo [N, 64, 1024]
         vocab     : Vocabulary object (word2idx mapping)
         char2idx  : dict mapping characters to indices
         pos2idx   : dict mapping POS tags to indices
@@ -27,10 +29,14 @@ class ResESIM_Dataset(Dataset):
     def __init__(
         self,
         csv_path: Path,
+        elmo_path: Path,
         vocab,
         char2idx: dict,
         pos2idx: dict,
     ):
+        # Load pre-computed ELMo
+        self.elmo_embeddings = np.load(elmo_path)  # (N, 64, 1024)
+
         # Load CSV
         df = pd.read_csv(csv_path)
         self.labels = df["label"].astype(int).tolist()
@@ -58,9 +64,8 @@ class ResESIM_Dataset(Dataset):
         hyp_tok = self.hyp_tokens[idx]
 
         return {
-            # Raw tokens for real-time ELMo (plain Python lists, not tensors)
-            "premise_raw": prem_tok[: MAX_LEN],
-            "hypothesis_raw": hyp_tok[: MAX_LEN],
+            # Pre-computed ELMo
+            "elmo_embedding": torch.tensor(self.elmo_embeddings[idx], dtype=torch.float32),
             # GloVe indices
             "premise_ids": torch.tensor(self._get_token_ids(prem_tok), dtype=torch.long),
             "hypothesis_ids": torch.tensor(self._get_token_ids(hyp_tok), dtype=torch.long),
@@ -87,19 +92,3 @@ class ResESIM_Dataset(Dataset):
             # Label
             "label": torch.tensor(self.labels[idx], dtype=torch.long),
         }
-
-
-def collate_fn(batch):
-    """
-    Custom collate function to handle raw token lists (not tensors).
-    Raw token lists stay as lists of lists; tensors are stacked normally.
-    """
-    collated = {}
-    for key in batch[0]:
-        if key in ("premise_raw", "hypothesis_raw"):
-            # Keep raw token lists as list of lists
-            collated[key] = [item[key] for item in batch]
-        else:
-            # Stack tensor keys normally
-            collated[key] = torch.stack([item[key] for item in batch])
-    return collated

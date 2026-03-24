@@ -12,7 +12,7 @@ from tqdm import tqdm
 from sklearn.metrics import f1_score
 
 import res_esim.trainer.training as res_esim_trainer
-from res_esim.loader.res_esim_dataset import ResESIM_Dataset, collate_fn
+from res_esim.loader.res_esim_dataset import ResESIM_Dataset
 from res_esim.model_layers.oracle_net import OracleNet
 from embeddings import (
     Vocabulary,
@@ -26,14 +26,12 @@ from embeddings import (
 )
 from util.tokenization import tokenise
 
-# ELMo paths (download via downloader.py)
-ELMO_OPTIONS = Path("bin/elmo/elmo_2x4096_512_2048cnn_2xhighway_options.json")
-ELMO_WEIGHTS = Path("bin/elmo/elmo_2x4096_512_2048cnn_2xhighway_weights.hdf5")
-GLOVE_PATH = Path("bin/glove/glove.6B.300d.txt")
-
-# Data paths
+# Paths
 TRAIN_CSV = Path("data/train.csv")
 DEV_CSV = Path("data/dev.csv")
+TRAIN_ELMO = Path("output/embeddings_train.npy")
+DEV_ELMO = Path("output/embeddings_dev.npy")
+GLOVE_PATH = Path("bin/glove/glove.6B.300d.txt")
 
 
 class HyperParameters:
@@ -51,34 +49,32 @@ class HyperParameters:
 
 
 def train(model, input_module, device, vocab, char2idx, pos2idx):
-    """Train with real-time ELMo inference."""
+    """Train with pre-computed embeddings."""
     hyperparameters = HyperParameters()
 
-    # Datasets (no pre-computed .npy files)
-    train_dataset = ResESIM_Dataset(TRAIN_CSV, vocab, char2idx, pos2idx)
-    dev_dataset = ResESIM_Dataset(DEV_CSV, vocab, char2idx, pos2idx)
+    # Datasets with pre-computed ELMo
+    train_dataset = ResESIM_Dataset(TRAIN_CSV, TRAIN_ELMO, vocab, char2idx, pos2idx)
+    dev_dataset = ResESIM_Dataset(DEV_CSV, DEV_ELMO, vocab, char2idx, pos2idx)
 
     hyperparameters.TOTAL_STEPS = hyperparameters.NUM_EPOCHS * (
         len(train_dataset) // hyperparameters.BATCH_SIZE
     )
 
-    # Loaders with custom collate_fn for raw tokens
+    # Loaders
     train_loader = DataLoader(
         train_dataset,
         batch_size=hyperparameters.BATCH_SIZE,
         shuffle=True,
         num_workers=0,
-        collate_fn=collate_fn,
     )
     dev_loader = DataLoader(
         dev_dataset,
         batch_size=hyperparameters.BATCH_SIZE,
         shuffle=False,
         num_workers=0,
-        collate_fn=collate_fn,
     )
 
-    # Optimizer covers both input_module and oracle
+    # Optimizer
     optimizer = torch.optim.Adam(
         list(input_module.parameters()) + list(model.parameters()),
         lr=hyperparameters.LEARNING_RATE,
@@ -172,7 +168,7 @@ def train(model, input_module, device, vocab, char2idx, pos2idx):
 def _train_epoch(
     input_module, oracle, loader, optimizer, scheduler, criterion, device, epoch=None
 ):
-    """Train one epoch with real-time ELMo inference."""
+    """Train one epoch with pre-computed embeddings."""
     input_module.train()
     oracle.train()
 
@@ -191,19 +187,16 @@ def _train_epoch(
         hyp_pos = batch["hypothesis_pos"].to(device)
         prem_neg = batch["premise_neg"].to(device)
         hyp_neg = batch["hypothesis_neg"].to(device)
+        prem_elmo = batch["elmo_embedding"].to(device)
         prem_mask = batch["premise_mask"].to(device)
         hyp_mask = batch["hypothesis_mask"].to(device)
         labels = batch["label"].to(device)
 
-        # Raw token lists (not tensors) for ELMo
-        prem_raw = batch["premise_raw"]
-        hyp_raw = batch["hypothesis_raw"]
-
         optimizer.zero_grad()
 
-        # Forward pass through input embedding module with real-time ELMo
-        prem_out = input_module(prem_ids, prem_char, prem_pos, prem_neg, prem_raw)
-        hyp_out = input_module(hyp_ids, hyp_char, hyp_pos, hyp_neg, hyp_raw)
+        # Forward pass through input embedding module
+        prem_out = input_module(prem_ids, prem_char, prem_pos, prem_neg, prem_elmo)
+        hyp_out = input_module(hyp_ids, hyp_char, hyp_pos, hyp_neg, prem_elmo)
 
         prem_lens = prem_mask.sum(dim=1)
         hyp_lens = hyp_mask.sum(dim=1)
@@ -236,7 +229,7 @@ def _train_epoch(
 
 
 def _evaluate(input_module, oracle, loader, criterion, device):
-    """Evaluate with real-time ELMo inference."""
+    """Evaluate with pre-computed embeddings."""
     input_module.eval()
     oracle.eval()
 
@@ -254,17 +247,14 @@ def _evaluate(input_module, oracle, loader, criterion, device):
             hyp_pos = batch["hypothesis_pos"].to(device)
             prem_neg = batch["premise_neg"].to(device)
             hyp_neg = batch["hypothesis_neg"].to(device)
+            prem_elmo = batch["elmo_embedding"].to(device)
             prem_mask = batch["premise_mask"].to(device)
             hyp_mask = batch["hypothesis_mask"].to(device)
             labels = batch["label"].to(device)
 
-            # Raw token lists for ELMo
-            prem_raw = batch["premise_raw"]
-            hyp_raw = batch["hypothesis_raw"]
-
-            # Forward pass through input embedding module with real-time ELMo
-            prem_out = input_module(prem_ids, prem_char, prem_pos, prem_neg, prem_raw)
-            hyp_out = input_module(hyp_ids, hyp_char, hyp_pos, hyp_neg, hyp_raw)
+            # Forward pass through input embedding module
+            prem_out = input_module(prem_ids, prem_char, prem_pos, prem_neg, prem_elmo)
+            hyp_out = input_module(hyp_ids, hyp_char, hyp_pos, hyp_neg, prem_elmo)
 
             prem_lens = prem_mask.sum(dim=1)
             hyp_lens = hyp_mask.sum(dim=1)
@@ -287,9 +277,9 @@ def _evaluate(input_module, oracle, loader, criterion, device):
 
 
 def initialize_and_train():
-    """Initialize and train with real-time ELMo inference."""
+    """Initialize and train with pre-computed embeddings."""
     print("=" * 80)
-    print("Real-time ELMo Inference for ResESIM")
+    print("ResESIM with Pre-computed Embeddings")
     print("=" * 80)
 
     # 1. Build vocabularies from training data only
@@ -319,11 +309,9 @@ def initialize_and_train():
     char_cnn = CharCNN(char_vocab_size=len(char2idx), char_embed_dim=30)
     pos_embedding = POSEmbedding(pos_vocab_size=len(pos2idx), pos_embed_dim=50)
 
-    # 3. InputEmbeddingModule with real-time ELMo
-    print("\n3. Initializing InputEmbeddingModule with real-time ELMo...")
+    # 3. InputEmbeddingModule (pre-computed)
+    print("\n3. Initializing InputEmbeddingModule...")
     input_module = InputEmbeddingModule(
-        elmo_options=str(ELMO_OPTIONS),
-        elmo_weights=str(ELMO_WEIGHTS),
         glove_layer=glove_layer,
         char_cnn=char_cnn,
         pos_embedding=pos_embedding,
@@ -345,7 +333,7 @@ def initialize_and_train():
     # 5. Device (MPS → CUDA → CPU)
     print("\n5. Setting up device...")
     if torch.backends.mps.is_available():
-        device = torch.device("cpu")
+        device = torch.device("mps")
     elif torch.cuda.is_available():
         device = torch.device("cuda")
     else:
@@ -365,6 +353,33 @@ def initialize_and_train():
         vocab=vocab,
         char2idx=char2idx,
         pos2idx=pos2idx,
+    )
+
+    print("=" * 80)
+    print(f"Training Complete. Best F1: {best_f1:.4f}")
+    print("=" * 80)
+
+
+if __name__ == "__main__":
+    initialize_and_train()
+int("=" * 80)
+    model, input_module, best_f1 = train(
+        model=model,
+        input_module=input_module,
+        device=device,
+        vocab=vocab,
+        char2idx=char2idx,
+        pos2idx=pos2idx,
+    )
+
+    print("=" * 80)
+    print(f"Training Complete. Best F1: {best_f1:.4f}")
+    print("=" * 80)
+
+
+if __name__ == "__main__":
+    initialize_and_train()
+pos2idx,
     )
 
     print("=" * 80)
