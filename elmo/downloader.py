@@ -126,3 +126,14 @@ def elmo_downloader(download_folder):
 
     print(f"ELMo model files available in {download_folder}")
     return download_folder
+
+if __name__ == "__main__":
+    print("Starting downloads...")
+    
+    # Download GloVe to bin/glove
+    download_and_extract_glove_6B("bin/glove")
+    
+    # Download ELMo to bin/elmo
+    elmo_downloader("bin/elmo")
+    
+    print("All downloads finished! You are ready to train.")

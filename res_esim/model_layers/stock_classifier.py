@@ -69,7 +69,7 @@ class StockClassifier(nn.Module):
         """
         Max Pool over sequence dimension. Implements eq. 22 in the paper.
         """
-        tensor = tensor.masked_fill(mask.unsqueeze(-1), float('-inf'))
+        tensor = tensor.masked_fill(mask.unsqueeze(-1), -1e9)
         return tensor.max(dim=1).values
 
     @staticmethod

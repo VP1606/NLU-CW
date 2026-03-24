@@ -1,71 +1,105 @@
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 import torch
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import Dataset
+
+from util.tokenization import tokenise
+from embeddings.negation import get_negation_flags
+from embeddings.char_cnn import words_to_char_tensor
+from embeddings.pos_embedding import get_pos_ids
+
+MAX_LEN = 64
+MAX_WORD_LEN = 20
 
 
 class ResESIM_Dataset(Dataset):
     """
-    Loads precomputed ELMo embeddings and CSV labels for OracleNet.
-    Optionally appends negation flags as an extra feature dimension.
+    Dataset with real-time ELMo inference. No pre-computed .npy files.
 
     Args:
-        prem_npy      : path to .npy of shape (N, max_len, 1024)
-        hyp_npy       : path to .npy of shape (N, max_len, 1024)
-        csv_path      : path to CSV with a 'label' column
-        negation_path : (optional) path to .pt with keys
-                        'premise_negation' and 'hypothesis_negation'
-                        (lists of N variable-length int lists)
+        csv_path  : path to CSV with 'premise', 'hypothesis', 'label' columns
+        vocab     : Vocabulary object (word2idx mapping)
+        char2idx  : dict mapping characters to indices
+        pos2idx   : dict mapping POS tags to indices
     """
 
     def __init__(
         self,
-        prem_npy: Path,
-        hyp_npy: Path,
         csv_path: Path,
-        negation_path: Path = None,
+        vocab,
+        char2idx: dict,
+        pos2idx: dict,
     ):
-        self.prem = np.load(prem_npy)  # (N, max_len, 1024)
-        self.hyp = np.load(hyp_npy)  # (N, max_len, 1024)
+        # Load CSV
+        df = pd.read_csv(csv_path)
+        self.labels = df["label"].astype(int).tolist()
+        self.prem_tokens = [tokenise(s) for s in df["premise"]]
+        self.hyp_tokens = [tokenise(s) for s in df["hypothesis"]]
 
-        labels = pd.read_csv(csv_path)["label"].tolist()
-        self.labels = labels
-
-        # Sequence length = number of non-zero token positions
-        self.prem_lengths = (self.prem.any(axis=-1)).sum(axis=-1)  # (N,)
-        self.hyp_lengths = (self.hyp.any(axis=-1)).sum(axis=-1)  # (N,)
-
-        if negation_path is not None:
-            neg = torch.load(negation_path)
-            self.prem = self._append_flags(self.prem, neg["premise_negation"])
-            self.hyp = self._append_flags(self.hyp, neg["hypothesis_negation"])
-
-    def _append_flags(self, embeddings: np.ndarray, flag_lists: list) -> np.ndarray:
-        """
-        Pads each flag list to max_len and concatenates as a single
-        extra feature column.
-
-        embeddings : (N, max_len, dim)
-        flag_lists : list of N variable-length int lists
-        returns    : (N, max_len, dim + 1)
-        """
-        N, max_len, _ = embeddings.shape
-        flags = np.zeros((N, max_len, 1), dtype=np.float32)
-        for i, f in enumerate(flag_lists):
-            l = min(len(f), max_len)
-            flags[i, :l, 0] = f[:l]
-        return np.concatenate([embeddings, flags], axis=-1)  # (N, max_len, dim+1)
+        # Vocab lookups
+        self.vocab = vocab
+        self.char2idx = char2idx
+        self.pos2idx = pos2idx
 
     def __len__(self):
         return len(self.labels)
 
+    def _get_token_ids(self, tokens):
+        ids = self.vocab.encode(tokens)[: MAX_LEN]
+        return ids + [0] * (MAX_LEN - len(ids))
+
+    def _get_mask(self, tokens):
+        real_len = min(len(tokens), MAX_LEN)
+        return [1] * real_len + [0] * (MAX_LEN - real_len)
+
     def __getitem__(self, idx):
+        prem_tok = self.prem_tokens[idx]
+        hyp_tok = self.hyp_tokens[idx]
+
         return {
-            "premise_embedding": torch.tensor(self.prem[idx], dtype=torch.float32),
-            "hyp_embedding": torch.tensor(self.hyp[idx], dtype=torch.float32),
-            "premise_length": torch.tensor(self.prem_lengths[idx], dtype=torch.long),
-            "hyp_length": torch.tensor(self.hyp_lengths[idx], dtype=torch.long),
+            # Raw tokens for real-time ELMo (plain Python lists, not tensors)
+            "premise_raw": prem_tok[: MAX_LEN],
+            "hypothesis_raw": hyp_tok[: MAX_LEN],
+            # GloVe indices
+            "premise_ids": torch.tensor(self._get_token_ids(prem_tok), dtype=torch.long),
+            "hypothesis_ids": torch.tensor(self._get_token_ids(hyp_tok), dtype=torch.long),
+            # CharCNN
+            "premise_char": words_to_char_tensor(
+                prem_tok, self.char2idx, MAX_WORD_LEN, MAX_LEN
+            ),
+            "hypothesis_char": words_to_char_tensor(
+                hyp_tok, self.char2idx, MAX_WORD_LEN, MAX_LEN
+            ),
+            # POS
+            "premise_pos": torch.tensor(
+                get_pos_ids(prem_tok, self.pos2idx, MAX_LEN), dtype=torch.long
+            ),
+            "hypothesis_pos": torch.tensor(
+                get_pos_ids(hyp_tok, self.pos2idx, MAX_LEN), dtype=torch.long
+            ),
+            # Negation 3d
+            "premise_neg": get_negation_flags(prem_tok, MAX_LEN),
+            "hypothesis_neg": get_negation_flags(hyp_tok, MAX_LEN),
+            # Masks
+            "premise_mask": torch.tensor(self._get_mask(prem_tok), dtype=torch.long),
+            "hypothesis_mask": torch.tensor(self._get_mask(hyp_tok), dtype=torch.long),
+            # Label
             "label": torch.tensor(self.labels[idx], dtype=torch.long),
         }
+
+
+def collate_fn(batch):
+    """
+    Custom collate function to handle raw token lists (not tensors).
+    Raw token lists stay as lists of lists; tensors are stacked normally.
+    """
+    collated = {}
+    for key in batch[0]:
+        if key in ("premise_raw", "hypothesis_raw"):
+            # Keep raw token lists as list of lists
+            collated[key] = [item[key] for item in batch]
+        else:
+            # Stack tensor keys normally
+            collated[key] = torch.stack([item[key] for item in batch])
+    return collated
