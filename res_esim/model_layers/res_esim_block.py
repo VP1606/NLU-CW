@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 
 from .esim_block import ESIMBlock
+from .highway_input_projection import HighwayProjection
 
 
 class ResESIM(nn.Module):
@@ -26,10 +27,7 @@ class ResESIM(nn.Module):
         """
         Convert input dimension into internal working dimension.
         """
-        if input_dim != hidden_dim:
-            self.input_projection = nn.Linear(input_dim, hidden_dim)
-        else:
-            self.input_projection = nn.Identity()
+        self.input_projection = HighwayProjection(input_dim, hidden_dim)
 
         # --- Input Dropout ---------------------
         self.input_dropout = nn.Dropout(dropout_rate)
