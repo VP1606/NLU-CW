@@ -30,11 +30,12 @@ Pipeline (per the paper):
 import torch
 import torch.nn as nn
 
+
 class StockClassifier(nn.Module):
     def __init__(
         self,
-        hidden_dim  : int,
-        n_classes   : int = 3,
+        hidden_dim: int,
+        n_classes: int = 3,
         dropout_rate: float = 0.2,
     ):
         super().__init__()
@@ -42,19 +43,19 @@ class StockClassifier(nn.Module):
 
         # --- Aggregation BILSTM (Independent for Premise & Hypothesis) ---------
         self._bilstm_premise = nn.LSTM(
-            input_size = hidden_dim,
-            hidden_size = hidden_dim // 2,
-            num_layers = 1,
-            batch_first = True,
-            bidirectional = True
+            input_size=hidden_dim,
+            hidden_size=hidden_dim // 2,
+            num_layers=1,
+            batch_first=True,
+            bidirectional=True,
         )
 
         self._bilstm_hyp = nn.LSTM(
-            input_size = hidden_dim,
-            hidden_size = hidden_dim // 2,
-            num_layers = 1,
-            batch_first = True,
-            bidirectional = True
+            input_size=hidden_dim,
+            hidden_size=hidden_dim // 2,
+            num_layers=1,
+            batch_first=True,
+            bidirectional=True,
         )
 
         # --- Classification FFN ------------------------------------------------
@@ -69,7 +70,7 @@ class StockClassifier(nn.Module):
         """
         Max Pool over sequence dimension. Implements eq. 22 in the paper.
         """
-        tensor = tensor.masked_fill(mask.unsqueeze(-1), float('-inf'))
+        tensor = tensor.masked_fill(mask.unsqueeze(-1), -1e9)
         return tensor.max(dim=1).values
 
     @staticmethod
@@ -96,11 +97,11 @@ class StockClassifier(nn.Module):
 
         # --- Aggregation BILSTM ------------------------------------------------
         v_p, _ = self._bilstm_premise(h_p)  # (batch, seq_len, hidden_dim)
-        v_h, _ = self._bilstm_hyp(h_h)      # (batch, seq_len, hidden_dim)
+        v_h, _ = self._bilstm_hyp(h_h)  # (batch, seq_len, hidden_dim)
 
         # --- Masked Max & Mean Pooling -----------------------------------------
-        v_p_max  = self._masked_max_pool(v_p, mask_p)   # (batch, hidden_dim)
-        v_h_max  = self._masked_max_pool(v_h, mask_h)   # (batch, hidden_dim)
+        v_p_max = self._masked_max_pool(v_p, mask_p)  # (batch, hidden_dim)
+        v_h_max = self._masked_max_pool(v_h, mask_h)  # (batch, hidden_dim)
         v_p_mean = self._masked_mean_pool(v_p, mask_p)  # (batch, hidden_dim)
         v_h_mean = self._masked_mean_pool(v_h, mask_h)  # (batch, hidden_dim)
 
@@ -108,26 +109,29 @@ class StockClassifier(nn.Module):
         # v = [vp_max; vp_mean; vh_max; vh_mean; vp_max − vh_max; vp_max ∗ vh_max]
         # Max captures the most salient features; mean captures the overall context.
         # Difference and product capture alignment between the two sentences.
-        v = torch.cat([
-            v_p_max,
-            v_p_mean,
-            v_h_max,
-            v_h_mean,
-            v_p_max - v_h_max,
-            v_p_max * v_h_max,
-        ], dim=-1)  # (batch, 6*hidden_dim)
+        v = torch.cat(
+            [
+                v_p_max,
+                v_p_mean,
+                v_h_max,
+                v_h_mean,
+                v_p_max - v_h_max,
+                v_p_max * v_h_max,
+            ],
+            dim=-1,
+        )  # (batch, 6*hidden_dim)
 
         # --- FFN (equation 24) ------------------------------------------------
         # ypred = softmax(ReLU (vW4 + b4)W5) + b5)
         # == softmax(W5[ReLU(W4[v])])
         # Note: The paper's equation 24 omits the final softmax, but in PyTorch we typically return raw logits and apply softmax in the loss function (e.g., CrossEntropyLoss).
-        y_pred = self.W5_linear(
-            torch.relu(self.W4_linear(self.dropout(v)))
-        )
+        y_pred = self.W5_linear(torch.relu(self.W4_linear(self.dropout(v))))
 
         # DEBUG: Check final logits
         if torch.isnan(y_pred).any() or torch.isinf(y_pred).any():
             print(f"[DEBUG] NaN/inf in final logits!")
-            print(f"        NaN: {torch.isnan(y_pred).any()}, inf: {torch.isinf(y_pred).any()}")
+            print(
+                f"        NaN: {torch.isnan(y_pred).any()}, inf: {torch.isinf(y_pred).any()}"
+            )
 
         return y_pred
