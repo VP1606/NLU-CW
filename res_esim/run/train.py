@@ -1,3 +1,4 @@
+import argparse
 import hashlib
 import json
 import os
@@ -129,7 +130,7 @@ def train(
     return model, best_loss, best_f1
 
 
-def initialize_and_train():
+def initialize_and_train(platform: str = "mac"):
     hyper_parameters = HyperParameters()
     model = OracleNet(
         input_dim=hyper_parameters.INPUT_DIM,
@@ -140,7 +141,10 @@ def initialize_and_train():
         num_heads=hyper_parameters.NUM_ATTN_HEADS,
     )
 
-    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+    if platform == "hpc":
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    else:
+        device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
     print(f"Training on {device}")
 
     model.to(device)
@@ -155,4 +159,9 @@ def initialize_and_train():
 
 
 if __name__ == "__main__":
-    initialize_and_train()
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--platform", choices=["mac", "hpc"], default="mac"
+    )
+    args = parser.parse_args()
+    initialize_and_train(platform=args.platform)
