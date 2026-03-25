@@ -1,27 +1,24 @@
 from pathlib import Path
+import numpy as np
 import torch
 from torch.utils.data import Dataset
 
 class ResESIM_Dataset(Dataset):
     """
     Loads pre-computed full embedding tensors for OracleNet.
-    
-    Each .pt file contains embeddings pre-computed from:
-      GloVe [300d] + ELMo [1024d] + CharCNN [100d] + POS [50d] + Negation [3d] = 1477d
-    
+    GloVe [300d] + ELMo [1024d] + CharCNN [100d] + POS [50d] + Negation [3d] = 1477d
     Args:
-        pt_path : path to .pt file saved by NLU_Embeddings_v2.ipynb
-                  (train_embeddings.pt or dev_embeddings.pt)
+        npz_path : path to .npz file (train_embeddings.npz or dev_embeddings.npz)
     """
-    def __init__(self, pt_path: Path):
-        data = torch.load(pt_path, map_location='cpu')
-        self.prem_emb      = data['premise_emb']       # [N, 64, 1477]
-        self.hyp_emb       = data['hypothesis_emb']    # [N, 64, 1477]
-        self.prem_lengths  = data['premise_mask'].sum(dim=-1)    # [N]
-        self.hyp_lengths   = data['hypothesis_mask'].sum(dim=-1) # [N]
-        self.labels        = data['labels']             # [N]
-        print(f'Loaded {pt_path}')
-        print(f'  samples={len(self.labels)}, dim={self.prem_emb.shape[-1]}')
+    def __init__(self, npz_path: Path):
+        print(f'Loading {npz_path}...')
+        d = np.load(npz_path)
+        self.prem_emb     = torch.tensor(d['premise_emb'],     dtype=torch.float32)
+        self.hyp_emb      = torch.tensor(d['hypothesis_emb'],  dtype=torch.float32)
+        self.prem_lengths = torch.tensor(d['premise_mask'],    dtype=torch.long).sum(dim=-1)
+        self.hyp_lengths  = torch.tensor(d['hypothesis_mask'], dtype=torch.long).sum(dim=-1)
+        self.labels       = torch.tensor(d['labels'],          dtype=torch.long)
+        print(f'  {len(self.labels)} samples, dim={self.prem_emb.shape[-1]}')
 
     def __len__(self):
         return len(self.labels)

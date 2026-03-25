@@ -39,8 +39,8 @@ def train(
 ):
 
     # --- Setup Data Loaders ------------------------------
-    TRAIN_PT = Path("output/train_embeddings.pt")   
-    DEV_PT   = Path("output/dev_embeddings.pt")     
+    TRAIN_PT = Path("output/train_embeddings.npz")
+    DEV_PT   = Path("output/dev_embeddings.npz")     
 
     train_dataset = ResESIM_Dataset(TRAIN_PT)        
     dev_dataset   = ResESIM_Dataset(DEV_PT)
