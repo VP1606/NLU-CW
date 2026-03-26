@@ -19,5 +19,5 @@ python -m res_esim.run.train
 
 ## Current Best Scores
 
-Dev Set (Macro F1): 69.65%
-Training Set (Macro F1): 73.09%
+Dev Set (Macro F1): 70.26%
+Training Set (Macro F1): 75.39%
