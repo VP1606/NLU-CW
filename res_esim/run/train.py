@@ -5,6 +5,7 @@ import os
 from datetime import datetime
 from pathlib import Path
 
+import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -83,6 +84,8 @@ def train(
     best_loss = float("inf")
     best_f1 = float("-inf")
 
+    history = {"train_loss": [], "dev_f1": []}
+
     epoch_bar = tqdm(range(hyperparameters.NUM_EPOCHS), desc="Epochs", unit="epoch")
     for epoch in epoch_bar:
         train_loss, train_acc, train_f1 = res_esim_trainer.train_epoch(
@@ -100,6 +103,8 @@ def train(
         )
 
         epoch_bar.set_postfix(t_f1=f"{train_f1:.4f}", d_f1=f"{dev_f1:.4f}")
+        history["train_loss"].append(train_loss)
+        history["dev_f1"].append(dev_f1)
 
         if dev_f1 > best_f1:
             best_f1 = dev_f1
@@ -125,6 +130,24 @@ def train(
                     f,
                     indent=2,
                 )
+
+    # --- Plot Training Curves -----------------------------
+    epochs = range(1, hyperparameters.NUM_EPOCHS + 1)
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
+
+    ax1.plot(epochs, history["train_loss"], marker="o")
+    ax1.set_title("Train Loss")
+    ax1.set_xlabel("Epoch")
+    ax1.set_ylabel("Loss")
+
+    ax2.plot(epochs, history["dev_f1"], marker="o", color="orange")
+    ax2.set_title("Dev Macro F1")
+    ax2.set_xlabel("Epoch")
+    ax2.set_ylabel("F1")
+
+    fig.tight_layout()
+    fig.savefig(out_dir / "training_curves.png", dpi=150)
+    plt.close(fig)
 
     print(f"Best model saved to: {out_dir}")
     return model, best_loss, best_f1

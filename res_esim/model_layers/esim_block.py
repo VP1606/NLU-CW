@@ -2,7 +2,13 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-# TODO: Look into NaN values appearing in simulation testing: may not appear in real data, but this must be checked and solved.
+"""
+Added Intra-Sentence Self-Attention, sitting between the BiLSTM and Cross Attention Modules.
+
+Parikh et al. (2016) "A Decomposable Attention Model for NLI"; Wang & Jiang (2017)
+
+Add a self-attention pass within each sentence before cross-attention, so each token attends to its own sentence first.
+"""
 
 
 class ESIMBlock(nn.Module):
@@ -21,6 +27,14 @@ class ESIMBlock(nn.Module):
             hidden_size=hidden_dim // 2,
             num_layers=1,
             bidirectional=True,
+            batch_first=True,
+        )
+
+        # Intra-Sentence Self-Attention
+        self.self_attn = nn.MultiheadAttention(
+            embed_dim=hidden_dim,
+            num_heads=num_heads,
+            dropout=dropout_rate,
             batch_first=True,
         )
 
@@ -84,7 +98,15 @@ class ESIMBlock(nn.Module):
         enc_p, _ = self.shared_bilstm(self.dropout(h_p))  # (batch, len_p, hidden_dim)
         enc_h, _ = self.shared_bilstm(self.dropout(h_h))  # (batch, len_h, hidden_dim)
 
-        # ── 2. Multi-Head attention ──────────────────────────────────────
+        # --- 2. Intra-Sentence Attention -------------------------------------
+        enc_p, _ = self.self_attn(
+            enc_p, enc_p, enc_p, key_padding_mask=mask_p, need_weights=False
+        )
+        enc_h, _ = self.self_attn(
+            enc_h, enc_h, enc_h, key_padding_mask=mask_h, need_weights=False
+        )
+
+        # ── 3. Multi-Head attention ──────────────────────────────────────----
         att_p, _ = self.cross_attn(
             query=enc_p,
             key=enc_h,
@@ -101,15 +123,15 @@ class ESIMBlock(nn.Module):
             need_weights=False,
         )
 
-        # ── 3. Enhancement ───────────────────────────────────────────────────
+        # ── 4. Enhancement ───────────────────────────────────────────────────
         m_p = self._enhance(enc_p, att_p)  # (batch, len_p, 4*hidden_dim)
         m_h = self._enhance(enc_h, att_h)  # (batch, len_h, 4*hidden_dim)
 
-        # ── 4. FFN ───────────────────────────────────────────────────────────
+        # ── 5. FFN ───────────────────────────────────────────────────────────
         n_p = self.ffn(m_p)  # (batch, len_p, hidden_dim)
         n_h = self.ffn(m_h)  # (batch, len_h, hidden_dim)
 
-        # ── 5. Residual connection + LayerNorm (equation 19 in paper) ────────
+        # ── 6. Residual connection + LayerNorm (equation 19 in paper) ────────
         out_p = self.layer_norm_p(residual_p + n_p)
         out_h = self.layer_norm_h(residual_h + n_h)
 
