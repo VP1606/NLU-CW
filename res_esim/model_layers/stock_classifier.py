@@ -16,6 +16,10 @@ Pipeline (per the paper):
       │
   Aggregation BiLSTM           ← eq. 20–21: vp = BiLSTM(h_p), vh = BiLSTM(h_h)
       │
+      |
+  Attention-Weighted Pooling: Bahdanau et al. (2015); dos Santos et al. (2016) "Attentive Pooling Networks"
+      |
+      |
   Masked Max Pooling            ← eq. 22:   vp_max = max(vp),  vh_max = max(vh)
       │
   Concatenation                 ← eq. 23:   v = [vp_max; vh_max; vp_max−vh_max; vp_max*vh_max]
@@ -24,8 +28,6 @@ Pipeline (per the paper):
       │
   Softmax → class probabilities
 """
-
-# TODO: Look into NaN values appearing in simulation testing: may not appear in real data, but this must be checked and solved.
 
 import torch
 import torch.nn as nn
@@ -61,10 +63,22 @@ class StockClassifier(nn.Module):
         # --- Classification FFN ------------------------------------------------
         self.dropout = nn.Dropout(dropout_rate)
 
-        self.W4_linear = nn.Linear(6 * hidden_dim, hidden_dim)
+        self.W4_linear = nn.Linear(8 * hidden_dim, hidden_dim)
         self.W5_linear = nn.Linear(hidden_dim, n_classes)
 
+        # --- Attention-Weighted Pooling ----------------------------------------
+        self.attn_premise = nn.Linear(hidden_dim, 1, bias=False)
+        self.attn_hyp = nn.Linear(hidden_dim, 1, bias=False)
+
     # --- Utilities ---------------------------------------------------------------
+
+    @staticmethod
+    def _masked_attn_pool(tensor, mask, attn_layer):
+        scores = attn_layer(tensor).squeeze(-1)
+        scores = scores.masked_fill(mask, -1e9)
+        weights = torch.softmax(scores, dim=1)
+        return (weights.unsqueeze(-1) * tensor).sum(dim=1)
+
     @staticmethod
     def _masked_max_pool(tensor, mask):
         """
@@ -99,6 +113,10 @@ class StockClassifier(nn.Module):
         v_p, _ = self._bilstm_premise(h_p)  # (batch, seq_len, hidden_dim)
         v_h, _ = self._bilstm_hyp(h_h)  # (batch, seq_len, hidden_dim)
 
+        # --- Attention Pooling -------------------------------------------------
+        v_p_attn = self._masked_attn_pool(v_p, mask_p, self.attn_premise)
+        v_h_attn = self._masked_attn_pool(v_h, mask_h, self.attn_hyp)
+
         # --- Masked Max & Mean Pooling -----------------------------------------
         v_p_max = self._masked_max_pool(v_p, mask_p)  # (batch, hidden_dim)
         v_h_max = self._masked_max_pool(v_h, mask_h)  # (batch, hidden_dim)
@@ -113,8 +131,10 @@ class StockClassifier(nn.Module):
             [
                 v_p_max,
                 v_p_mean,
+                v_p_attn,
                 v_h_max,
                 v_h_mean,
+                v_h_attn,
                 v_p_max - v_h_max,
                 v_p_max * v_h_max,
             ],
