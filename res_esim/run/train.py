@@ -18,43 +18,57 @@ from res_esim.model_layers.oracle_net import OracleNet
 
 
 class HyperParameters:
-    def __init__(self):
-        self.INPUT_DIM = 1477          # was 1024 + 1
-        self.HIDDEN_DIM = 512
-        self.NUM_BLOCKS = 3
-        self.NUM_CLASSES = 2
-        self.DROPOUT_RATE = 0.2
-        self.NUM_ATTN_HEADS = 8
-        self.NUM_EPOCHS = 15
-        self.BATCH_SIZE = 32
-        self.NUM_SAMPLES: int = 24432  # full train set
-        self.LEARNING_RATE = 1e-4
-        self.WARMUP_STEPS = 200        # was 5 — proper warmup
-        self.TOTAL_STEPS: int = (self.NUM_SAMPLES // self.BATCH_SIZE) * self.NUM_EPOCHS
-        
+    def __init__(self, **kwargs):
+        self.INPUT_DIM = kwargs.get("INPUT_DIM", 1477)
+        self.HIDDEN_DIM = kwargs.get("HIDDEN_DIM", 512)
+        self.NUM_BLOCKS = kwargs.get("NUM_BLOCKS", 3)
+        self.NUM_CLASSES = kwargs.get("NUM_CLASSES", 2)
+        self.DROPOUT_RATE = kwargs.get("DROPOUT_RATE", 0.2)
+        self.NUM_ATTN_HEADS = kwargs.get("NUM_ATTN_HEADS", 8)
+        self.NUM_EPOCHS = kwargs.get("NUM_EPOCHS", 20)
+        self.BATCH_SIZE = kwargs.get("BATCH_SIZE", 32)
+        self.LEARNING_RATE = kwargs.get("LEARNING_RATE", 1e-4)
+
+        # These will be calculated
+        self.NUM_SAMPLES = 0
+        self.TOTAL_STEPS = 0
+        self.WARMUP_STEPS = 0
 
 
 def train(
     model: OracleNet,
     device,
     hyperparameters: HyperParameters,
+    train_dataset=None,
+    dev_dataset=None,
+    run_name=None,
+    base_out_dir=None,
 ):
-
     # --- Setup Data Loaders ------------------------------
     TRAIN_PT = Path("output/train_embeddings.npz")
-    DEV_PT   = Path("output/dev_embeddings.npz")     
+    DEV_PT = Path("output/dev_embeddings.npz")
 
-    train_dataset = ResESIM_Dataset(TRAIN_PT)        
-    dev_dataset   = ResESIM_Dataset(DEV_PT)
+    if train_dataset is None:
+        train_dataset = ResESIM_Dataset(TRAIN_PT)
+    if dev_dataset is None:
+        dev_dataset = ResESIM_Dataset(DEV_PT)
 
     train_loader = DataLoader(
-        train_dataset, batch_size=hyperparameters.BATCH_SIZE,
-        shuffle=True, num_workers=0
+        train_dataset,
+        batch_size=hyperparameters.BATCH_SIZE,
+        shuffle=True,
+        num_workers=0,
     )
     dev_loader = DataLoader(
-        dev_dataset, batch_size=hyperparameters.BATCH_SIZE,
-        shuffle=False, num_workers=0
+        dev_dataset, batch_size=hyperparameters.BATCH_SIZE, shuffle=False, num_workers=0
     )
+
+    # --- Update Hyper Parameters -------------------------
+    hyperparameters.NUM_SAMPLES = len(train_dataset)
+    hyperparameters.TOTAL_STEPS = (
+        hyperparameters.NUM_SAMPLES // hyperparameters.BATCH_SIZE
+    ) * hyperparameters.NUM_EPOCHS
+    hyperparameters.WARMUP_STEPS = int(hyperparameters.TOTAL_STEPS * 0.05)
 
     # --- Setup Training Components -----------------------
     # Optimizer
@@ -76,8 +90,13 @@ def train(
     criterion = nn.CrossEntropyLoss()
 
     # --- Output Directory ---------------------------------
-    run_hash = hashlib.sha256(os.urandom(16)).hexdigest()[:8]
-    out_dir = Path("output/training_runs") / run_hash
+    if run_name is None:
+        run_name = hashlib.sha256(os.urandom(16)).hexdigest()[:8]
+
+    if base_out_dir is None:
+        base_out_dir = Path("output/training_runs")
+
+    out_dir = Path(base_out_dir) / run_name
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # --- Training Loop ------------------------------------
@@ -86,7 +105,12 @@ def train(
 
     history = {"train_loss": [], "dev_f1": []}
 
-    epoch_bar = tqdm(range(hyperparameters.NUM_EPOCHS), desc="Epochs", unit="epoch")
+    epoch_bar = tqdm(
+        range(hyperparameters.NUM_EPOCHS),
+        desc=f"Run {run_name}",
+        unit="epoch",
+        leave=False,
+    )
     for epoch in epoch_bar:
         train_loss, train_acc, train_f1 = res_esim_trainer.train_epoch(
             oracle=model,
@@ -114,7 +138,7 @@ def train(
                 json.dump(
                     {
                         "train_pt": str(TRAIN_PT),
-                        "dev_pt":   str(DEV_PT),
+                        "dev_pt": str(DEV_PT),
                         "trained_at": datetime.now().isoformat(),
                         "best_epoch": epoch,
                         "best_train_loss": train_loss,
@@ -149,8 +173,7 @@ def train(
     fig.savefig(out_dir / "training_curves.png", dpi=150)
     plt.close(fig)
 
-    print(f"Best model saved to: {out_dir}")
-    return model, best_loss, best_f1
+    return best_f1, out_dir
 
 
 def initialize_and_train(platform: str = "mac"):
@@ -173,18 +196,16 @@ def initialize_and_train(platform: str = "mac"):
     model.to(device)
 
     print("starting training....")
-    model, best_loss, best_f1 = train(
+    best_f1, out_dir = train(
         model=model, device=device, hyperparameters=hyper_parameters
     )
 
-    print(f"Training Complete, Best Loss: {best_loss}, Best F1: {best_f1}")
+    print(f"Training Complete, Best F1: {best_f1}, saved to {out_dir}")
     return
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--platform", choices=["mac", "hpc"], default="mac"
-    )
+    parser.add_argument("--platform", choices=["mac", "hpc"], default="mac")
     args = parser.parse_args()
     initialize_and_train(platform=args.platform)

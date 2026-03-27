@@ -139,3 +139,4 @@ wasabi==0.10.1
 wcwidth==0.6.0
 weasel==0.4.3
 wrapt==2.1.2
+optuna==4.2.1
