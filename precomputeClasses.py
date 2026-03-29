@@ -114,12 +114,19 @@ class EmbeddingPrecomputer:
     # ── Step 1: Load meta ─────────────────────────────────────────────────────
     def _load_meta(self):
         print(f'[1/5] Loading meta from {self.meta_path}...')
-        meta             = torch.load(self.meta_path, map_location='cpu')
-        self.vocab       = meta['vocab']
+        meta             = torch.load(self.meta_path, map_location='cpu', weights_only=False)
+        vocab_raw = meta['vocab']
+        if isinstance(vocab_raw, list):
+            class _Vocab:
+                def __init__(self, words):
+                    self.word2idx = {w: i for i, w in enumerate(words)}
+            self.vocab = _Vocab(vocab_raw)
+        else:
+            self.vocab = vocab_raw
         self.char2idx    = meta['char2idx']
         self.pos2idx     = meta['pos2idx']
         self.glove_matrix = meta['glove_matrix']
-        print(f'      vocab={len(self.vocab)}  char={len(self.char2idx)}  pos={len(self.pos2idx)}')
+        print(f'      vocab={len(self.vocab.word2idx)}  char={len(self.char2idx)}  pos={len(self.pos2idx)}')
 
     # ── Step 2: Build embedding layers ───────────────────────────────────────
     def _build_layers(self):
