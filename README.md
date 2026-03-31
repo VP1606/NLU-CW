@@ -68,6 +68,8 @@ git lfs pull
 
 # Install dependencies
 pip install -r require310.txt
+./venv310/bin/pip install 'tokenizers==0.13.3' 'allennlp==2.10.1' 'allennlp-models==2.10.1' 'numpy<2.0'
+
 ```
 
 ### Generate Predictions
