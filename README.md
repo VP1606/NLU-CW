@@ -1,5 +1,5 @@
 # OracleNet — COMP34812 NLU Coursework
-**Group:** 16
+**Group:** CW47
 **Category:** B — Deep Learning (non-transformer)
 **Model:** ResESIM (Residual ESIM) with 1477-dimensional input embeddings
 
