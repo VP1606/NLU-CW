@@ -116,3 +116,127 @@ Large files are stored via Git LFS. If Git LFS is unavailable, download manually
 | `notebook_data/meta.pt` | Vocab + GloVe embedding matrix (1.0 MB) |
 | `final_model_versions/ff2f02d4/best_model.pt` | Trained OracleNet weights (86.9 MB) |
 | `notebook_data/elmo_model/weights.hdf5` | ELMo weights (357 MB) |
+
+---
+---
+
+# ModernBERT-Large NLI — COMP34812 NLU Coursework
+**Group:** CW47
+**Category:** C — Deep Learning (Transformer)
+**Model:** Ensemble of two fine-tuned `answerdotai/ModernBERT-large` models (395M parameters each) with dynamic threshold optimisation
+
+---
+
+## Results
+
+### Standalone Models (dev set)
+| Model | F1 Score |
+|---|---|
+| ModernBERT-large (fine-tuned) | 92.83% |
+| ModernBERT-large (tasksource fine-tuned) | 94.00% |
+
+### Ensemble Sweep (dev set)
+| orig weight | tasksource weight | Default F1 | Best F1 | Threshold |
+|---|---|---|---|---|
+| 0.2 | 0.8 | 94.10% | 94.20% | 0.24 |
+| 0.3 | 0.7 | 94.13% | 94.18% | 0.56 |
+| **0.4** | **0.6** | **94.20%** | **94.22%** | **0.43** |
+| 0.5 | 0.5 | 94.17% | 94.17% | 0.50 |
+| 0.6 | 0.4 | 93.01% | 93.66% | 0.40 |
+
+**Best configuration:** orig=0.4 + tasksource=0.6 → **F1: 94.22%** @ threshold 0.43
+
+**Models:** `final_model_versions/modernBerta` + `final_model_versions/taskSource`
+**Ensemble weights:** 0.4 (modernBerta) + 0.6 (taskSource)
+**Optimal threshold:** 0.43
+
+---
+
+## Code Structure
+
+```
+NLU-CW/
+├── transformer_3_large.ipynb       # Training pipeline: data cleaning, fine-tuning, threshold tuning
+├── inference_demo_transformer.ipynb # Inference notebook — run this to generate predictions
+├── Group_CW47_NLI_C.csv            # Final test set predictions (ready for submission)
+├── final_model_versions/
+│   ├── modernBerta/                # Fine-tuned ModernBERT-large checkpoint (stored via Git LFS)
+│   │   ├── config.json
+│   │   ├── model.safetensors
+│   │   ├── tokenizer.json
+│   │   └── tokenizer_config.json
+│   └── taskSource/                 # Second fine-tuned ModernBERT-large checkpoint (stored via Git LFS)
+│       ├── config.json
+│       ├── model.safetensors
+│       ├── tokenizer.json
+│       └── tokenizer_config.json
+└── data/
+    ├── train.csv                   # Training data
+    ├── dev.csv                     # Development data (with labels)
+    ├── test.csv                    # Test data (no labels)
+    └── NLI_trial.csv               # Trial data (with labels)
+```
+
+**Code organisation:**
+- **Training code:** `transformer_3_large.ipynb` — data cleaning, fine-tuning, threshold tuning
+- **Inference code:** `inference_demo_transformer.ipynb` — ensemble inference on test set
+
+---
+
+## Running the Demo
+
+### Requirements
+- Python 3.9+
+- `transformers`, `torch`, `scikit-learn`, `pandas`, `numpy`
+- **Hardware:** GPU with at least 15GB VRAM recommended (e.g. NVIDIA T4, L4, V100). Can run on Apple Silicon (MPS) but will be slow.
+
+### Setup
+```bash
+# Pull model weights via Git LFS
+git lfs install
+git lfs pull
+
+# Install dependencies
+pip install transformers torch scikit-learn pandas numpy
+```
+
+### Generate Predictions
+Open and run `inference_demo_transformer.ipynb`. It will:
+1. Load both fine-tuned ModernBERT-large models from `final_model_versions/`
+2. Tokenize `data/test.csv`
+3. Generate probability logits from each model
+4. Combine via weighted ensemble (0.4 / 0.6)
+5. Apply threshold 0.43 and save predictions to `Group_CW47_C.csv`
+
+---
+
+## Training
+
+Training is executed by running `transformer_3_large.ipynb` in Google Colab (GPU required).
+
+**Key optimisations:**
+- Mixed precision (`fp16=True`) to reduce GPU memory usage
+- Gradient accumulation (4 steps, effective batch size 16) to prevent OOM errors
+- Strict NaN scrubbing on labels to prevent CUDA `device-side assert` crashes
+- Dynamic threshold tuning (0.10–0.90) to maximise F1 independently of default 0.50
+
+---
+
+## Attribution
+
+| Resource | Reference |
+|---|---|
+| ModernBERT architecture | Answer.AI / Hugging Face: `answerdotai/ModernBERT-large` |
+| Transformers library | Wolf et al. (2020), "Transformers: State-of-the-Art Natural Language Processing" |
+| Dataset | Coursework-provided NLI datasets (`train`, `dev`, `test`) |
+
+---
+
+## Use of Generative AI Tools
+
+LLMs were used as coding assistants during development for:
+1. Debugging CUDA `device-side assert` memory errors via robust label scrubbing
+2. Recommending `fp16` mixed precision and gradient accumulation for GPU memory efficiency
+3. Assisting with the dynamic threshold optimisation loop
+4. Formatting predictions into the required pandas CSV structure
+5. Mapping project details into the provided Jinja model card template
