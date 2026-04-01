@@ -1,11 +1,22 @@
 # OracleNet — COMP34812 NLU Coursework
+
 **Group:** CW47
-**Category:** B — Deep Learning (non-transformer)
+**Chosen Categories**: Category B, C
+
+## 1. Category B: Deep Learning (Non-Transformer)
 **Model:** ResESIM (Residual ESIM) with 1477-dimensional input embeddings
 
----
+### Model: OracleNet
 
-## Results
+We propose OracleNet: a model built on the ResESIM Architecture (Chen et al. (2017)), with further enhancements:
+
+- Multi-Head Attention
+- Highway Input Projection (Srivastava et al. (2015))
+- Attention Weighted Pooling (Bahdanau et al. (2015))
+- Intra-Sentence Self Attention (Parikh et al. (2016))
+- and more...
+
+### Results
 
 | Split | Macro F1 |
 |---|---|
@@ -14,10 +25,9 @@
 | Trial set (50 examples) | 75.85% |
 
 **Best model:** `ff2f02d4`
+[Hugging Face](https://huggingface.co/VP1606/OracleNet)
 
----
-
-## Code Structure
+### Code Structure
 
 ```
 NLU-CW/
@@ -52,15 +62,13 @@ NLU-CW/
 - **Evaluation code:** `res_esim/evaluation/` — evaluates on dev set
 - **Demo code:** `demo.ipynb` — loads saved model and generates predictions
 
----
+### Running the Demo
 
-## Running the Demo
-
-### Requirements
+#### Requirements
 - Python 3.10
 - Git LFS (to pull model weights)
 
-### Setup
+#### Setup
 ```bash
 # Pull model weights via Git LFS
 git lfs install
@@ -79,9 +87,7 @@ Open and run `demo.ipynb` top to bottom. It will:
 3. Run inference on `data/test.csv`
 4. Save predictions to `Group_16_B.csv`
 
----
-
-## Training
+### Training
 
 ```bash
 # From the root directory
@@ -92,13 +98,16 @@ Note: ELMo pre-computation requires the `venv310` environment (Python 3.10 with 
 
 ---
 
-## Attribution
+### Attribution
 
 This work builds on the following:
 
 | Resource | Reference |
 |---|---|
 | ESIM architecture | Chen et al. (2017), "Enhanced LSTM for Natural Language Inference" |
+| Highway Input Projection | Srivastava et al. (2015), "Training Very Deep Networks" |
+| Attention Weighted Pooling | dos Santos et al. (2016), "Attentive Pooling Networks" |
+| Intra-Sentence Self-Attention | Parikh et al. (2016), "A Decomposable Attention Model for NLI" |
 | ELMo embeddings | Peters et al. (2018), "Deep contextualized word representations" — weights from [AllenNLP](https://allennlp.org/) |
 | GloVe embeddings | Pennington et al. (2014), "GloVe: Global Vectors for Word Representation" — 300d vectors from [Stanford NLP](https://nlp.stanford.edu/projects/glove/) |
 | CharCNN | Kim et al. (2016), "Character-Aware Neural Language Models" |
@@ -107,7 +116,7 @@ This work builds on the following:
 
 ---
 
-## Model Files (Cloud Storage)
+### Model Files (Cloud Storage)
 
 Large files are stored via Git LFS. If Git LFS is unavailable, download manually:
 
@@ -117,8 +126,12 @@ Large files are stored via Git LFS. If Git LFS is unavailable, download manually
 | `final_model_versions/ff2f02d4/best_model.pt` | Trained OracleNet weights (86.9 MB) |
 | `notebook_data/elmo_model/weights.hdf5` | ELMo weights (357 MB) |
 
+*(Note: OracleNet model weights are also available on [Hugging Face](https://huggingface.co/VP1606/OracleNet))*
+
 ---
 ---
+
+## 2. Category C: Deep Learning (Transformer)
 
 # ModernBERT-Large NLI — COMP34812 NLU Coursework
 **Group:** CW47
