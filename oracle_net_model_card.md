@@ -36,6 +36,15 @@ OracleNet (run ff2f02d4) consists of two components:
       are concatenated (including difference and element-wise product terms) and passed through a
       2-layer FFN to produce class logits.
 
+The fundamental architecture of OracleNet was inherited from ResESIM, which we have fully redefined and enhanced using the following approaches:
+
+- Intra-sentence self-attention
+- Highway input projection
+- Attention-weighted pooling, in combination with max/mean pooling
+- ESIM-Pro: ESIM blocks redefined using Attention mechanisms instead of just LSTM, in an aim to cure the information bottleneck.
+
+### Model Development
+
 - **Developed by:** Premakantha Varun, Kaan Oktem and Munir Emre Tantas
 - **Language(s):** English
 - **Model type:** Supervised
