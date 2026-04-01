@@ -247,9 +247,10 @@ Training is executed by running `transformer_3_large.ipynb` in Google Colab (GPU
 
 ## Use of Generative AI Tools
 
-LLMs were used as coding assistants during development for:
-1. Debugging CUDA `device-side assert` memory errors via robust label scrubbing
-2. Recommending `fp16` mixed precision and gradient accumulation for GPU memory efficiency
-3. Assisting with the dynamic threshold optimisation loop
-4. Formatting predictions into the required pandas CSV structure
-5. Mapping project details into the provided Jinja model card template
+During the development of this project, Large Language Models (LLMs) were utilized as coding assistants. Specifically, AI tools were used to:
+1. Debug PyTorch `CUDA: device-side assert` memory errors by suggesting robust data-scrubbing techniques for formatting labels as strict integers.
+2. Recommend hardware-optimization strategies for Large models, such as implementing `fp16` mixed precision and gradient accumulation steps to prevent GPU memory overflow.
+3. Assist in writing the Python iteration loops for the dynamic threshold optimization script.
+4. Format the final output arrays into the strict pandas CSV structure required by the local scorer and submission guidelines.
+5. Map our project details into the provided Jinja model card template format.
+
