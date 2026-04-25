@@ -76,12 +76,12 @@ with open(glove_file, 'r', encoding='utf-8') as f, tqdm(
 
 print(f"      Loaded {len(glove_embeddings)} GloVe vectors")
 
-# Step 3: Build vocab from trial data
-print("\n[3/4] Building vocab from trial data...")
+# Step 3: Build vocab from training data
+print("\n[3/4] Building vocab from training data...")
 import pandas as pd
 from collections import Counter
 
-df = pd.read_csv('./data/NLI_trial.csv')
+df = pd.read_csv('./data/train.csv')
 all_text = (df['premise'] + ' ' + df['hypothesis']).str.lower()
 
 # Simple tokenization
