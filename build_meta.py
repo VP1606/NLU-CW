@@ -8,6 +8,9 @@ import pickle
 import numpy as np
 from pathlib import Path
 import os
+import zipfile
+import urllib.request
+from tqdm import tqdm
 
 # Create output directory
 os.makedirs('./notebook_data', exist_ok=True)
@@ -19,8 +22,39 @@ print("=" * 60)
 # Step 1: Download GloVe 6B 300d if not present
 glove_file = './notebook_data/glove.6B.300d.txt'
 if not os.path.exists(glove_file):
-    print("\n[1/4] Downloading GloVe 6B 300d (822MB)...")
-    os.system(f"wget -q -O {glove_file}.zip https://nlp.stanford.edu/data/glove.6B.zip && unzip -q {glove_file}.zip -d ./notebook_data/ && rm {glove_file}.zip")
+    print("\n[1/4] Downloading GloVe 6B 300d (~822MB)...")
+    zip_path = f'{glove_file}.zip'
+    url = 'https://nlp.stanford.edu/data/glove.6B.zip'
+
+    with urllib.request.urlopen(url) as resp:
+        total = int(resp.headers.get('Content-Length') or 0)
+        with open(zip_path, 'wb') as out, tqdm(
+            total=total, unit='B', unit_scale=True, unit_divisor=1024,
+            desc='glove.6B.zip',
+        ) as bar:
+            while True:
+                chunk = resp.read(1024 * 64)
+                if not chunk:
+                    break
+                out.write(chunk)
+                bar.update(len(chunk))
+
+    print("      Extracting glove.6B.300d.txt...")
+    with zipfile.ZipFile(zip_path) as zf:
+        member = 'glove.6B.300d.txt'
+        info = zf.getinfo(member)
+        with zf.open(info) as src, open(glove_file, 'wb') as dst, tqdm(
+            total=info.file_size, unit='B', unit_scale=True, unit_divisor=1024,
+            desc=member,
+        ) as bar:
+            while True:
+                chunk = src.read(1024 * 64)
+                if not chunk:
+                    break
+                dst.write(chunk)
+                bar.update(len(chunk))
+
+    os.remove(zip_path)
     print("      Downloaded.")
 else:
     print(f"\n[1/4] GloVe file exists: {glove_file}")
@@ -28,12 +62,17 @@ else:
 # Step 2: Load GloVe embeddings
 print("\n[2/4] Loading GloVe embeddings...")
 glove_embeddings = {}
-with open(glove_file, 'r', encoding='utf-8') as f:
+total_bytes = os.path.getsize(glove_file)
+with open(glove_file, 'r', encoding='utf-8') as f, tqdm(
+    total=total_bytes, unit='B', unit_scale=True, unit_divisor=1024,
+    desc='parsing GloVe',
+) as bar:
     for line in f:
         parts = line.strip().split()
         word = parts[0]
         embedding = np.array([float(x) for x in parts[1:]], dtype=np.float32)
         glove_embeddings[word] = embedding
+        bar.update(len(line.encode('utf-8')))
 
 print(f"      Loaded {len(glove_embeddings)} GloVe vectors")
 
