@@ -31,6 +31,24 @@ sys.path.insert(0, str(HERE))
 from oracle_net.predict import OracleNetPredictor  # noqa: E402
 from oracle_tf.predict import OracleTFPredictor  # noqa: E402
 
+# Pull the file groups straight from the source of truth so the UI mirrors
+# whatever hf_connect/file_repo.py declares.
+sys.path.insert(0, str(HERE.parent))
+from hf_connect.file_repo import (  # noqa: E402
+    ELMO_FILES,
+    MODERN_BERTA_FILES,
+    ORACLE_NET_FILES,
+    TASK_SOURCE_FILES,
+)
+
+STATUS_GROUPS = [
+    ("OracleNet Model Files", ORACLE_NET_FILES),
+    ("OracleTF ModernBerta Files", MODERN_BERTA_FILES),
+    ("OracleTF TaskSource Files", TASK_SOURCE_FILES),
+    ("ELMO Files", ELMO_FILES),
+]
+REPO_ROOT = HERE.parent
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("oraclenli")
 
@@ -62,6 +80,39 @@ def index():
 @app.get("/<path:filename>")
 def static_files(filename: str):
     return send_from_directory(HERE, filename)
+
+
+def _is_present(local_path: str) -> bool:
+    """A file counts as present if it exists, is non-empty, and is not an LFS
+    pointer stub. The LFS check is a cheap defence so the UI doesn't lie when
+    the user has the placeholder file but not the real content."""
+    p = Path(local_path)
+    if not p.is_absolute():
+        p = REPO_ROOT / p
+    if not p.exists() or p.stat().st_size == 0:
+        return False
+    try:
+        with p.open("rb") as f:
+            head = f.read(64)
+        if head.startswith(b"version https://git-lfs.github.com/spec/v1"):
+            return False
+    except OSError:
+        return False
+    return True
+
+
+@app.get("/api/status")
+def status():
+    groups = []
+    for label, files in STATUS_GROUPS:
+        missing = [f.local_path for f in files if not _is_present(f.local_path)]
+        groups.append({
+            "label": label,
+            "ok": not missing,
+            "missing": missing,
+            "total": len(files),
+        })
+    return jsonify({"groups": groups})
 
 
 @app.post("/api/predict")
