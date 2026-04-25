@@ -7,3 +7,18 @@ venv39/
 copy_to_csf.sh
 require39.txt
 venv310/
+
+# Model files & large embeddings — fetched from Hugging Face via hf_connect/
+final_model_versions/ff2f02d4/best_model.pt
+final_model_versions/ff2f02d4/meta.json
+final_model_versions/modernBerta/model.safetensors
+final_model_versions/modernBerta/config.json
+final_model_versions/modernBerta/tokenizer.json
+final_model_versions/modernBerta/tokenizer_config.json
+final_model_versions/taskSource/model.safetensors
+final_model_versions/taskSource/config.json
+final_model_versions/taskSource/tokenizer.json
+final_model_versions/taskSource/tokenizer_config.json
+notebook_data/elmo_model/weights.hdf5
+notebook_data/elmo_model/options.json
+notebook_data/meta.pt
