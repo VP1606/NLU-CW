@@ -273,6 +273,34 @@ function App() {
       fontSize: 13, fontFamily: t.mono, color: t.textMuted,
       letterSpacing: '0.02em',
     },
+    statusCard: {
+      position: 'fixed', top: '50%', right: 32, transform: 'translateY(-50%)',
+      width: 300, zIndex: 5,
+      background: t.surface, border: `1px solid ${t.border}`,
+      borderRadius: 14, padding: '20px 24px',
+      display: 'flex', flexDirection: 'column', gap: 16,
+    },
+    statusHeader: {
+      fontSize: 11, fontWeight: 600, letterSpacing: '0.12em',
+      textTransform: 'uppercase', color: t.textMuted,
+      marginBottom: 4,
+    },
+    statusRow: {
+      display: 'grid', gridTemplateColumns: '14px 1fr auto',
+      gap: 14, alignItems: 'center',
+    },
+    statusDot: (ok) => ({
+      width: 10, height: 10, borderRadius: '50%',
+      background: ok ? t.entailment : t.notEntailment,
+      boxShadow: ok ? `0 0 0 3px ${t.entailmentBg}` : `0 0 0 3px ${t.notEntailmentBg}`,
+    }),
+    statusLabel: {
+      fontSize: 15, color: t.text, fontWeight: 500, lineHeight: 1.3,
+    },
+    statusValue: (ok) => ({
+      fontFamily: t.mono, fontSize: 13,
+      color: ok ? t.entailment : t.notEntailment,
+    }),
     logCard: {
       background: t.surface, border: `1px dashed ${t.border}`,
       borderRadius: 12, padding: 16, fontFamily: t.mono, fontSize: 12,
@@ -390,6 +418,22 @@ function App() {
             );
           })}
         </div>
+      </div>
+
+      <div style={s.statusCard}>
+        <div style={s.statusHeader}>System Status</div>
+        {[
+          { label: 'OracleNet Model Files', ok: true },
+          { label: 'OracleTF ModernBerta Files', ok: true },
+          { label: 'OracleTF TaskSource Files', ok: true },
+          { label: 'ELMO Files', ok: true },
+        ].map((item, i) => (
+          <div key={i} style={s.statusRow}>
+            <div style={s.statusDot(item.ok)}></div>
+            <div style={s.statusLabel}>{item.label}</div>
+            <div style={s.statusValue(item.ok)}>{item.ok ? 'Downloaded' : 'Missing'}</div>
+          </div>
+        ))}
       </div>
 
       <TweaksPanel title="Tweaks">
