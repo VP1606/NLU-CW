@@ -110,32 +110,6 @@ function App() {
     setRawLog(null);
     setStage(null);
 
-    if (model !== 'OracleNet') {
-      // OracleTF not wired up yet — keep prototype stub.
-      const stubStages = ['Preparing input', 'Pre-computing embeddings', 'Running OracleTF inference'];
-      stubStages.forEach((label, i) => setTimeout(() => setStage(label), 200 + i * 500));
-      setTimeout(() => {
-        const conf = 0.72 + Math.random() * 0.26;
-        const isEntailment = Math.random() > 0.4;
-        const stubData = {
-          label: isEntailment ? 'Entailment' : 'Not Entailment',
-          label_id: isEntailment ? 1 : 0,
-          confidence: conf,
-          probabilities: {
-            'Entailment': isEntailment ? conf : 1 - conf,
-            'Not Entailment': isEntailment ? 1 - conf : conf,
-          },
-          model,
-          stub: true,
-        };
-        setResult({ ...stubData });
-        setRawLog(stubData);
-        setStage(null);
-        setLoading(false);
-      }, 1800);
-      return;
-    }
-
     try {
       const resp = await fetch('/api/predict', {
         method: 'POST',
@@ -380,7 +354,7 @@ function App() {
           <div style={s.resultCard(result.label === 'Entailment')}>
             <div style={s.resultLabel(result.label === 'Entailment')}>{result.label}</div>
             <div style={s.confidence}>
-              {result.model}{result.stub ? ' (stub)' : ''} · {(result.confidence * 100).toFixed(1)}% confidence
+              {result.model} · {(result.confidence * 100).toFixed(1)}% confidence
             </div>
             <div style={{ marginTop: 12 }}>
               <div style={{ height: 6, background: t.border, borderRadius: 3, overflow: 'hidden' }}>
@@ -398,7 +372,6 @@ function App() {
           <div style={s.logCard}>
             <div style={s.logHeader}>
               <div style={s.logTitle}>predict.py · raw output</div>
-              {rawLog.stub && <div style={s.logTitle}>stub</div>}
             </div>
             <pre style={s.logPre}>{JSON.stringify(rawLog, null, 2)}</pre>
           </div>

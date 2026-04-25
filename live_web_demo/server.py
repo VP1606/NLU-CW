@@ -29,6 +29,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
 from oracle_net.predict import OracleNetPredictor  # noqa: E402
+from oracle_tf.predict import OracleTFPredictor  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("oraclenli")
@@ -36,11 +37,20 @@ log = logging.getLogger("oraclenli")
 app = Flask(__name__, static_folder=None)
 
 log.info("Loading OracleNetPredictor (this can take ~30s on first run)...")
-PREDICTOR = OracleNetPredictor()
-log.info("OracleNetPredictor ready on device=%s", PREDICTOR.device)
+ORACLE_NET = OracleNetPredictor()
+log.info("OracleNetPredictor ready on device=%s", ORACLE_NET.device)
 
-# Stdout redirection inside predict() is process-global, so only one prediction
-# can run at a time. A lock keeps concurrent requests serial.
+log.info("Loading OracleTFPredictor (this loads two ModernBERT-Large checkpoints)...")
+try:
+    ORACLE_TF = OracleTFPredictor()
+    log.info("OracleTFPredictor ready on device=%s", ORACLE_TF.device)
+except FileNotFoundError as e:
+    ORACLE_TF = None
+    log.warning("OracleTFPredictor unavailable: %s", e)
+
+# Stdout redirection inside OracleNet's predict() is process-global, so only
+# one prediction can run at a time. A lock keeps concurrent requests serial
+# regardless of which model is selected.
 _PREDICT_LOCK = threading.Lock()
 
 
@@ -69,10 +79,16 @@ def predict():
     if not premise or not hypothesis:
         return jsonify({"error": "premise and hypothesis are required"}), 400
 
-    if model != "OracleNet":
-        return jsonify(
-            {"error": f"model {model!r} is not wired up yet — only OracleNet is live"}
-        ), 501
+    if model == "OracleNet":
+        predictor = ORACLE_NET
+    elif model == "OracleTF":
+        if ORACLE_TF is None:
+            return jsonify(
+                {"error": "OracleTF unavailable — model weights are missing on this server"}
+            ), 503
+        predictor = ORACLE_TF
+    else:
+        return jsonify({"error": f"unknown model {model!r}"}), 400
 
     def event_stream():
         events: queue.Queue = queue.Queue()
@@ -85,10 +101,11 @@ def predict():
         def worker() -> None:
             try:
                 with _PREDICT_LOCK:
-                    result = PREDICTOR.predict(
+                    result = predictor.predict(
                         premise, hypothesis, progress_callback=on_progress
                     )
-                outcome["result"] = result.to_dict()
+                # OracleNet returns a PredictionResult dataclass; OracleTF returns a dict.
+                outcome["result"] = result.to_dict() if hasattr(result, "to_dict") else result
             except Exception as e:  # noqa: BLE001
                 log.exception("predict failed")
                 outcome["error"] = str(e)
