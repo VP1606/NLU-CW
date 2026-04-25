@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CW47 — Textual Entailment Demo</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<style>
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body, #root { height: 100%; width: 100%; overflow: hidden; }
+  body { font-family: 'DM Sans', sans-serif; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "theme": "dark",
+  "accentHue": 250
+}/*EDITMODE-END*/;
+
+const themes = {
+  dark: {
+    bg: '#0a0a0f',
+    surface: '#141420',
+    surfaceHover: '#1c1c2e',
+    border: '#2a2a3d',
+    text: '#e8e8f0',
+    textMuted: '#8888a0',
+    accent: (h) => `oklch(0.7 0.18 ${h})`,
+    accentSoft: (h) => `oklch(0.25 0.06 ${h})`,
+    accentGlow: (h) => `oklch(0.7 0.18 ${h} / 0.15)`,
+    entailment: '#22c55e',
+    entailmentBg: 'rgba(34,197,94,0.1)',
+    notEntailment: '#ef4444',
+    notEntailmentBg: 'rgba(239,68,68,0.1)',
+    font: "'DM Sans', sans-serif",
+    mono: "'JetBrains Mono', monospace",
+  },
+  light: {
+    bg: '#f5f5f7',
+    surface: '#ffffff',
+    surfaceHover: '#fafafa',
+    border: '#e0e0e6',
+    text: '#1a1a2e',
+    textMuted: '#6b6b80',
+    accent: (h) => `oklch(0.55 0.2 ${h})`,
+    accentSoft: (h) => `oklch(0.92 0.04 ${h})`,
+    accentGlow: (h) => `oklch(0.55 0.2 ${h} / 0.08)`,
+    entailment: '#16a34a',
+    entailmentBg: 'rgba(22,163,74,0.08)',
+    notEntailment: '#dc2626',
+    notEntailmentBg: 'rgba(220,38,38,0.08)',
+    font: "'DM Sans', sans-serif",
+    mono: "'JetBrains Mono', monospace",
+  },
+  editorial: {
+    bg: '#faf8f5',
+    surface: '#ffffff',
+    surfaceHover: '#fdfcfa',
+    border: '#e8e2d8',
+    text: '#2c2418',
+    textMuted: '#8a7e6e',
+    accent: (h) => `oklch(0.52 0.14 ${h})`,
+    accentSoft: (h) => `oklch(0.94 0.03 ${h})`,
+    accentGlow: (h) => `oklch(0.52 0.14 ${h} / 0.08)`,
+    entailment: '#2d8a4e',
+    entailmentBg: 'rgba(45,138,78,0.08)',
+    notEntailment: '#c23028',
+    notEntailmentBg: 'rgba(194,48,40,0.08)',
+    font: "'Instrument Serif', serif",
+    mono: "'JetBrains Mono', monospace",
+  }
+};
+
+const EXAMPLES = [
+  { premise: "A person on a horse jumps over a broken down airplane.", hypothesis: "A person is outdoors, on a horse." },
+  { premise: "The dog is sleeping on the couch.", hypothesis: "The animal is awake and running outside." },
+  { premise: "Two doctors performed surgery in the hospital.", hypothesis: "Medical professionals operated on a patient." },
+];
+
+function App() {
+  const [tweaks, setTweaks] = window.useTweaks(TWEAK_DEFAULTS);
+  const t = themes[tweaks.theme] || themes.dark;
+  const hue = tweaks.accentHue;
+
+  const [premise, setPremise] = React.useState('');
+  const [hypothesis, setHypothesis] = React.useState('');
+  const [model, setModel] = React.useState('OracleNet');
+  const [loading, setLoading] = React.useState(false);
+  const [result, setResult] = React.useState(null);
+
+  const isEditorial = tweaks.theme === 'editorial';
+
+  const handlePredict = () => {
+    if (!premise.trim() || !hypothesis.trim()) return;
+    setLoading(true);
+    setResult(null);
+    setTimeout(() => {
+      const conf = 0.72 + Math.random() * 0.26;
+      const isEntailment = Math.random() > 0.4;
+      setResult({
+        label: isEntailment ? 'Entailment' : 'Not Entailment',
+        confidence: conf,
+        model,
+      });
+      setLoading(false);
+    }, 800 + Math.random() * 1200);
+  };
+
+  const loadExample = (ex) => {
+    setPremise(ex.premise);
+    setHypothesis(ex.hypothesis);
+    setResult(null);
+  };
+
+  const s = {
+    root: {
+      height: '100%', width: '100%', background: t.bg, color: t.text,
+      fontFamily: t.font, display: 'flex', flexDirection: 'column',
+      alignItems: 'center', justifyContent: 'center', padding: 32,
+      transition: 'all 0.3s ease',
+    },
+    container: {
+      width: '100%', maxWidth: 640, display: 'flex', flexDirection: 'column', gap: 24,
+    },
+    header: {
+      textAlign: 'center', marginBottom: 8,
+    },
+    badge: {
+      display: 'inline-block', fontFamily: t.mono, fontSize: 11, fontWeight: 600,
+      letterSpacing: '0.08em', textTransform: 'uppercase',
+      color: t.accent(hue), background: t.accentSoft(hue),
+      padding: '4px 12px', borderRadius: 20, marginBottom: 12,
+    },
+    title: {
+      fontSize: isEditorial ? 36 : 28, fontWeight: isEditorial ? 400 : 700,
+      fontStyle: isEditorial ? 'italic' : 'normal',
+      letterSpacing: isEditorial ? '-0.01em' : '-0.03em',
+      lineHeight: 1.2, marginBottom: 6,
+    },
+    subtitle: {
+      fontSize: 14, color: t.textMuted, fontFamily: t.mono, fontWeight: 400,
+    },
+    card: {
+      background: t.surface, border: `1px solid ${t.border}`,
+      borderRadius: 14, padding: 24, display: 'flex', flexDirection: 'column', gap: 18,
+    },
+    label: {
+      fontSize: 12, fontWeight: 600, letterSpacing: '0.04em',
+      textTransform: 'uppercase', color: t.textMuted, marginBottom: 6,
+    },
+    textarea: {
+      width: '100%', background: t.bg, border: `1px solid ${t.border}`,
+      borderRadius: 8, padding: '12px 14px', fontSize: 15, fontFamily: t.font,
+      color: t.text, resize: 'vertical', minHeight: 72, outline: 'none',
+      transition: 'border-color 0.2s',
+    },
+    modelRow: {
+      display: 'flex', gap: 8,
+    },
+    modelBtn: (active) => ({
+      flex: 1, padding: '10px 0', borderRadius: 8, fontSize: 14,
+      fontFamily: t.mono, fontWeight: 500, cursor: 'pointer',
+      border: active ? `2px solid ${t.accent(hue)}` : `1px solid ${t.border}`,
+      background: active ? t.accentSoft(hue) : 'transparent',
+      color: active ? t.accent(hue) : t.textMuted,
+      transition: 'all 0.2s',
+    }),
+    predictBtn: {
+      width: '100%', padding: '14px 0', borderRadius: 10, border: 'none',
+      background: t.accent(hue), color: '#fff', fontSize: 16,
+      fontWeight: 600, fontFamily: t.font, cursor: 'pointer',
+      opacity: (!premise.trim() || !hypothesis.trim() || loading) ? 0.5 : 1,
+      transition: 'all 0.2s',
+    },
+    resultCard: (isEnt) => ({
+      background: isEnt ? t.entailmentBg : t.notEntailmentBg,
+      border: `1px solid ${isEnt ? t.entailment : t.notEntailment}30`,
+      borderRadius: 14, padding: 24, textAlign: 'center',
+      animation: 'fadeIn 0.4s ease',
+    }),
+    resultLabel: (isEnt) => ({
+      fontSize: 26, fontWeight: isEditorial ? 400 : 700,
+      fontStyle: isEditorial ? 'italic' : 'normal',
+      color: isEnt ? t.entailment : t.notEntailment,
+      marginBottom: 4,
+    }),
+    confidence: {
+      fontSize: 14, fontFamily: t.mono, color: t.textMuted,
+    },
+    exRow: {
+      display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap',
+    },
+    exBtn: {
+      fontSize: 12, fontFamily: t.mono, color: t.textMuted,
+      background: t.surface, border: `1px solid ${t.border}`,
+      borderRadius: 20, padding: '5px 14px', cursor: 'pointer',
+      transition: 'all 0.15s',
+    },
+    spinner: {
+      width: 28, height: 28, border: `3px solid ${t.border}`,
+      borderTopColor: t.accent(hue), borderRadius: '50%',
+      animation: 'spin 0.8s linear infinite', margin: '12px auto',
+    },
+  };
+
+  return (
+    <div style={s.root}>
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        textarea:focus { border-color: ${t.accent(hue)} !important; }
+      `}</style>
+
+      <div style={s.container}>
+        <div style={s.header}>
+          <div style={s.badge}>CW47 · COMP34812</div>
+          <div style={s.title}>OracleNLI</div>
+          <div style={{fontSize: isEditorial ? 20 : 18, color: t.textMuted, fontWeight: 400, marginBottom: 4}}>Textual Entailment</div>
+          <div style={s.subtitle}>NLI: Category B and C</div>
+        </div>
+
+        <div style={s.card}>
+          <div>
+            <div style={s.label}>Premise</div>
+            <textarea style={s.textarea} value={premise} onChange={e => { setPremise(e.target.value); setResult(null); }}
+              placeholder="Enter the premise sentence…" rows={2} />
+          </div>
+          <div>
+            <div style={s.label}>Hypothesis</div>
+            <textarea style={s.textarea} value={hypothesis} onChange={e => { setHypothesis(e.target.value); setResult(null); }}
+              placeholder="Enter the hypothesis sentence…" rows={2} />
+          </div>
+          <div>
+            <div style={s.label}>Model</div>
+            <div style={s.modelRow}>
+              {[['OracleNet','CAT B','left'],['OracleTF','CAT C','right']].map(([m, cat, pos]) => (
+                <button key={m} style={{...s.modelBtn(model === m), position:'relative', paddingTop: 18, paddingBottom: 18, display:'flex', alignItems:'center', justifyContent:'center'}} onClick={() => { setModel(m); setResult(null); }}>
+                  <span style={{position:'absolute', top:4, [pos]:8, fontSize:9, fontWeight:600, opacity:0.6, letterSpacing:'0.05em'}}>{cat}</span>
+                  {m}
+                </button>
+              ))}
+            </div>
+          </div>
+          <button style={s.predictBtn} onClick={handlePredict}
+            disabled={!premise.trim() || !hypothesis.trim() || loading}>
+            {loading ? 'Running inference…' : 'Predict'}
+          </button>
+        </div>
+
+        {loading && <div style={s.spinner}></div>}
+
+        {result && (
+          <div style={s.resultCard(result.label === 'Entailment')}>
+            <div style={s.resultLabel(result.label === 'Entailment')}>{result.label}</div>
+            <div style={s.confidence}>
+              {result.model} · {(result.confidence * 100).toFixed(1)}% confidence
+            </div>
+            <div style={{ marginTop: 12 }}>
+              <div style={{ height: 6, background: t.border, borderRadius: 3, overflow: 'hidden' }}>
+                <div style={{
+                  width: `${result.confidence * 100}%`, height: '100%', borderRadius: 3,
+                  background: result.label === 'Entailment' ? t.entailment : t.notEntailment,
+                  transition: 'width 0.6s ease',
+                }}></div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div style={s.exRow}>
+          {EXAMPLES.map((ex, i) => (
+            <button key={i} style={s.exBtn} onClick={() => loadExample(ex)}
+              onMouseEnter={e => { e.target.style.borderColor = t.accent(hue); e.target.style.color = t.text; }}
+              onMouseLeave={e => { e.target.style.borderColor = t.border; e.target.style.color = t.textMuted; }}>
+              Example {i + 1}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <TweaksPanel title="Tweaks">
+        <TweakRadio label="Theme" value={tweaks.theme} options={[
+          { label: 'Dark', value: 'dark' },
+          { label: 'Light', value: 'light' },
+          { label: 'Editorial', value: 'editorial' },
+        ]} onChange={v => setTweaks({ theme: v })} />
+        <TweakSlider label="Accent Hue" value={tweaks.accentHue} min={0} max={360} step={5}
+          onChange={v => setTweaks({ accentHue: v })} />
+      </TweaksPanel>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
