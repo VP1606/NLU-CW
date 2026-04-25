@@ -11,7 +11,9 @@
 <script type="text/babel" src="tweaks-panel.jsx"></script>
 <style>
   *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body, #root { height: 100%; width: 100%; overflow: hidden; }
+  html, body { height: 100%; width: 100%; }
+  #root { min-height: 100%; width: 100%; }
+  body { overflow-y: auto; overflow-x: hidden; }
   body { font-family: 'DM Sans', sans-serif; }
 </style>
 </head>
@@ -94,40 +96,77 @@ function App() {
   const [model, setModel] = React.useState('OracleNet');
   const [loading, setLoading] = React.useState(false);
   const [result, setResult] = React.useState(null);
+  const [rawLog, setRawLog] = React.useState(null);
 
   const isEditorial = tweaks.theme === 'editorial';
 
-  const handlePredict = () => {
+  const handlePredict = async () => {
     if (!premise.trim() || !hypothesis.trim()) return;
     setLoading(true);
     setResult(null);
-    setTimeout(() => {
-      const conf = 0.72 + Math.random() * 0.26;
-      const isEntailment = Math.random() > 0.4;
-      setResult({
-        label: isEntailment ? 'Entailment' : 'Not Entailment',
-        confidence: conf,
-        model,
+    setRawLog(null);
+
+    if (model !== 'OracleNet') {
+      // OracleTF not wired up yet — keep prototype stub.
+      setTimeout(() => {
+        const conf = 0.72 + Math.random() * 0.26;
+        const isEntailment = Math.random() > 0.4;
+        const stubData = {
+          label: isEntailment ? 'Entailment' : 'Not Entailment',
+          label_id: isEntailment ? 1 : 0,
+          confidence: conf,
+          probabilities: {
+            'Entailment': isEntailment ? conf : 1 - conf,
+            'Not Entailment': isEntailment ? 1 - conf : conf,
+          },
+          model,
+          stub: true,
+        };
+        setResult({ ...stubData });
+        setRawLog(stubData);
+        setLoading(false);
+      }, 800 + Math.random() * 1200);
+      return;
+    }
+
+    try {
+      const resp = await fetch('/api/predict', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ premise, hypothesis, model }),
       });
+      const data = await resp.json();
+      setRawLog(data);
+      if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+      setResult({
+        label: data.label,
+        confidence: data.confidence,
+        model: data.model,
+      });
+    } catch (e) {
+      setResult({ error: e.message || String(e), model });
+    } finally {
       setLoading(false);
-    }, 800 + Math.random() * 1200);
+    }
   };
 
   const loadExample = (ex) => {
     setPremise(ex.premise);
     setHypothesis(ex.hypothesis);
     setResult(null);
+    setRawLog(null);
   };
 
   const s = {
     root: {
-      height: '100%', width: '100%', background: t.bg, color: t.text,
+      minHeight: '100vh', width: '100%', background: t.bg, color: t.text,
       fontFamily: t.font, display: 'flex', flexDirection: 'column',
-      alignItems: 'center', justifyContent: 'center', padding: 32,
-      transition: 'all 0.3s ease',
+      alignItems: 'center', padding: 32,
+      transition: 'background 0.3s ease, color 0.3s ease',
     },
     container: {
       width: '100%', maxWidth: 640, display: 'flex', flexDirection: 'column', gap: 24,
+      margin: 'auto 0',
     },
     header: {
       textAlign: 'center', marginBottom: 8,
@@ -208,6 +247,23 @@ function App() {
       borderTopColor: t.accent(hue), borderRadius: '50%',
       animation: 'spin 0.8s linear infinite', margin: '12px auto',
     },
+    logCard: {
+      background: t.surface, border: `1px dashed ${t.border}`,
+      borderRadius: 12, padding: 16, fontFamily: t.mono, fontSize: 12,
+      color: t.textMuted,
+    },
+    logHeader: {
+      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+      marginBottom: 8,
+    },
+    logTitle: {
+      fontSize: 11, fontWeight: 600, letterSpacing: '0.08em',
+      textTransform: 'uppercase', color: t.textMuted,
+    },
+    logPre: {
+      margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+      color: t.text, lineHeight: 1.5, fontFamily: t.mono, fontSize: 12,
+    },
   };
 
   return (
@@ -229,19 +285,19 @@ function App() {
         <div style={s.card}>
           <div>
             <div style={s.label}>Premise</div>
-            <textarea style={s.textarea} value={premise} onChange={e => { setPremise(e.target.value); setResult(null); }}
+            <textarea style={s.textarea} value={premise} onChange={e => { setPremise(e.target.value); setResult(null); setRawLog(null); }}
               placeholder="Enter the premise sentence…" rows={2} />
           </div>
           <div>
             <div style={s.label}>Hypothesis</div>
-            <textarea style={s.textarea} value={hypothesis} onChange={e => { setHypothesis(e.target.value); setResult(null); }}
+            <textarea style={s.textarea} value={hypothesis} onChange={e => { setHypothesis(e.target.value); setResult(null); setRawLog(null); }}
               placeholder="Enter the hypothesis sentence…" rows={2} />
           </div>
           <div>
             <div style={s.label}>Model</div>
             <div style={s.modelRow}>
               {[['OracleNet','CAT B','left'],['OracleTF','CAT C','right']].map(([m, cat, pos]) => (
-                <button key={m} style={{...s.modelBtn(model === m), position:'relative', paddingTop: 18, paddingBottom: 18, display:'flex', alignItems:'center', justifyContent:'center'}} onClick={() => { setModel(m); setResult(null); }}>
+                <button key={m} style={{...s.modelBtn(model === m), position:'relative', paddingTop: 18, paddingBottom: 18, display:'flex', alignItems:'center', justifyContent:'center'}} onClick={() => { setModel(m); setResult(null); setRawLog(null); }}>
                   <span style={{position:'absolute', top:4, [pos]:8, fontSize:9, fontWeight:600, opacity:0.6, letterSpacing:'0.05em'}}>{cat}</span>
                   {m}
                 </button>
@@ -256,11 +312,18 @@ function App() {
 
         {loading && <div style={s.spinner}></div>}
 
-        {result && (
+        {result && result.error && (
+          <div style={{...s.resultCard(false), textAlign: 'left'}}>
+            <div style={{...s.resultLabel(false), fontSize: 18}}>Inference failed</div>
+            <div style={{...s.confidence, whiteSpace: 'pre-wrap'}}>{result.error}</div>
+          </div>
+        )}
+
+        {result && !result.error && (
           <div style={s.resultCard(result.label === 'Entailment')}>
             <div style={s.resultLabel(result.label === 'Entailment')}>{result.label}</div>
             <div style={s.confidence}>
-              {result.model} · {(result.confidence * 100).toFixed(1)}% confidence
+              {result.model}{result.stub ? ' (stub)' : ''} · {(result.confidence * 100).toFixed(1)}% confidence
             </div>
             <div style={{ marginTop: 12 }}>
               <div style={{ height: 6, background: t.border, borderRadius: 3, overflow: 'hidden' }}>
@@ -271,6 +334,16 @@ function App() {
                 }}></div>
               </div>
             </div>
+          </div>
+        )}
+
+        {rawLog && (
+          <div style={s.logCard}>
+            <div style={s.logHeader}>
+              <div style={s.logTitle}>predict.py · raw output</div>
+              {rawLog.stub && <div style={s.logTitle}>stub</div>}
+            </div>
+            <pre style={s.logPre}>{JSON.stringify(rawLog, null, 2)}</pre>
           </div>
         )}
 
