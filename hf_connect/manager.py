@@ -17,7 +17,7 @@ class ModelFileManager:
         return download_from_hf(
             repo_id=self.repo_id,
             filename=self.remote_path,
-            save_path=os.path.dirname(self.local_path)
+            target_path=self.local_path
         )
     
     def push(self):
