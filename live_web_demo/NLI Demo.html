@@ -81,9 +81,11 @@ const themes = {
 };
 
 const EXAMPLES = [
-  { premise: "A person on a horse jumps over a broken down airplane.", hypothesis: "A person is outdoors, on a horse." },
-  { premise: "The dog is sleeping on the couch.", hypothesis: "The animal is awake and running outside." },
-  { premise: "Two doctors performed surgery in the hospital.", hypothesis: "Medical professionals operated on a patient." },
+  { premise: "A person on a horse jumps over a broken down airplane.", hypothesis: "A person is outdoors, on a horse.", expected: "Entailment" },
+  { premise: "Two doctors performed surgery in the hospital.", hypothesis: "Medical professionals operated on a patient.", expected: "Entailment" },
+  { premise: "A young girl is playing the piano on stage.", hypothesis: "A child is making music in front of an audience.", expected: "Entailment" },
+  { premise: "The dog is sleeping on the couch.", hypothesis: "The animal is awake and running outside.", expected: "Not Entailment" },
+  { premise: "The chef is carefully preparing pasta in the kitchen.", hypothesis: "The chef is asleep in bed.", expected: "Not Entailment" },
 ];
 
 function App() {
@@ -271,11 +273,19 @@ function App() {
       display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap',
     },
     exBtn: {
+      display: 'inline-flex', alignItems: 'center', gap: 10,
       fontSize: 12, fontFamily: t.mono, color: t.textMuted,
       background: t.surface, border: `1px solid ${t.border}`,
-      borderRadius: 20, padding: '5px 14px', cursor: 'pointer',
+      borderRadius: 20, padding: '5px 6px 5px 16px', cursor: 'pointer',
       transition: 'all 0.15s',
     },
+    exBadge: (isEnt) => ({
+      width: 20, height: 20, borderRadius: '50%', flexShrink: 0,
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      background: isEnt ? t.entailment : t.notEntailment,
+      color: '#fff', fontSize: 12, fontWeight: 700, lineHeight: 1,
+      fontFamily: t.font,
+    }),
     spinnerRow: {
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       gap: 14, margin: '12px auto',
@@ -395,13 +405,17 @@ function App() {
         )}
 
         <div style={s.exRow}>
-          {EXAMPLES.map((ex, i) => (
-            <button key={i} style={s.exBtn} onClick={() => loadExample(ex)}
-              onMouseEnter={e => { e.target.style.borderColor = t.accent(hue); e.target.style.color = t.text; }}
-              onMouseLeave={e => { e.target.style.borderColor = t.border; e.target.style.color = t.textMuted; }}>
-              Example {i + 1}
-            </button>
-          ))}
+          {EXAMPLES.map((ex, i) => {
+            const isEnt = ex.expected === 'Entailment';
+            return (
+              <button key={i} style={s.exBtn} onClick={() => loadExample(ex)}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = t.accent(hue); e.currentTarget.style.color = t.text; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = t.border; e.currentTarget.style.color = t.textMuted; }}>
+                <span>Example {i + 1}</span>
+                <span style={s.exBadge(isEnt)} aria-label={ex.expected}>{isEnt ? '✓' : '✕'}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
