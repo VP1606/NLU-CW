@@ -18,11 +18,13 @@ CLI usage (from repo root):
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable, Optional
 
 import pandas as pd
 import torch
@@ -42,6 +44,47 @@ from res_esim.model_layers.oracle_net import OracleNet  # noqa: E402
 
 # Convention from data/train.csv: 1 = entailment, 0 = not entailment.
 LABEL_NAMES = {0: "Not Entailment", 1: "Entailment"}
+
+# Maps "[N/5]" prefix in precomputeClasses stdout to a short, user-facing label.
+_PRECOMPUTE_STAGE_LABELS = {
+    "1/5": "Loading meta",
+    "2/5": "Building embedding layers",
+    "3/5": "Pre-computing ELMo (Peters et al., 2018)",
+    "4/5": "Pre-computing 1477d embeddings",
+    "5/5": "Saving embeddings",
+}
+
+
+class _StdoutTap:
+    """Line-buffered sink that forwards parsed precompute stages to a callback.
+
+    Mirrors writes to the original stdout so the existing logs still surface
+    in the server console.
+    """
+
+    def __init__(self, callback: Callable[[dict], None], passthrough):
+        self._cb = callback
+        self._passthrough = passthrough
+        self._buf = ""
+
+    def write(self, s: str) -> int:
+        if self._passthrough is not None:
+            self._passthrough.write(s)
+        self._buf += s
+        while "\n" in self._buf:
+            line, _, self._buf = self._buf.partition("\n")
+            line = line.strip()
+            if not line:
+                continue
+            for key, label in _PRECOMPUTE_STAGE_LABELS.items():
+                if line.startswith(f"[{key}]"):
+                    self._cb({"stage": key, "label": label})
+                    break
+        return len(s)
+
+    def flush(self) -> None:
+        if self._passthrough is not None:
+            self._passthrough.flush()
 
 
 @dataclass
@@ -139,11 +182,20 @@ class OracleNetPredictor:
             )
 
     @torch.no_grad()
-    def predict(self, premise: str, hypothesis: str) -> PredictionResult:
+    def predict(
+        self,
+        premise: str,
+        hypothesis: str,
+        progress_callback: Optional[Callable[[dict], None]] = None,
+    ) -> PredictionResult:
         if not premise or not premise.strip():
             raise ValueError("premise must be a non-empty string")
         if not hypothesis or not hypothesis.strip():
             raise ValueError("hypothesis must be a non-empty string")
+
+        def _emit(event: dict) -> None:
+            if progress_callback is not None:
+                progress_callback(event)
 
         # Reuse the exact bulk pipeline by writing a 1-row CSV and pointing
         # EmbeddingPrecomputer at it.
@@ -152,12 +204,24 @@ class OracleNetPredictor:
             csv_path = tmp / "input.csv"
             npz_path = tmp / "embeddings.npz"
 
+            _emit({"stage": "input", "label": "Preparing input"})
             pd.DataFrame(
                 [{"premise": premise, "hypothesis": hypothesis}]
             ).to_csv(csv_path, index=False)
 
-            self.precomputer.run(csv_path=str(csv_path), output_npz=str(npz_path))
+            _emit({"stage": "precompute", "label": "Pre-computing embeddings"})
+            if progress_callback is not None:
+                tap = _StdoutTap(progress_callback, sys.__stdout__)
+                with contextlib.redirect_stdout(tap):
+                    self.precomputer.run(
+                        csv_path=str(csv_path), output_npz=str(npz_path)
+                    )
+            else:
+                self.precomputer.run(
+                    csv_path=str(csv_path), output_npz=str(npz_path)
+                )
 
+            _emit({"stage": "inference", "label": "Running OracleNet inference"})
             dataset = ResESIM_Dataset(str(npz_path))
             loader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0)
             batch = next(iter(loader))

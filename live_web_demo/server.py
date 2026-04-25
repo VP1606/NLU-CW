@@ -16,11 +16,14 @@ Then open: http://localhost:8765/NLI%20Demo.html
 
 from __future__ import annotations
 
+import json
 import logging
+import queue
 import sys
+import threading
 from pathlib import Path
 
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, Response, jsonify, request, send_from_directory, stream_with_context
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
@@ -36,6 +39,10 @@ log.info("Loading OracleNetPredictor (this can take ~30s on first run)...")
 PREDICTOR = OracleNetPredictor()
 log.info("OracleNetPredictor ready on device=%s", PREDICTOR.device)
 
+# Stdout redirection inside predict() is process-global, so only one prediction
+# can run at a time. A lock keeps concurrent requests serial.
+_PREDICT_LOCK = threading.Lock()
+
 
 @app.get("/")
 def index():
@@ -49,6 +56,11 @@ def static_files(filename: str):
 
 @app.post("/api/predict")
 def predict():
+    """Stream prediction progress as newline-delimited JSON.
+
+    Each line is one event: {"type": "progress", "stage": ..., "label": ...}
+    or {"type": "result", ...} or {"type": "error", "error": ...}.
+    """
     payload = request.get_json(silent=True) or {}
     premise = (payload.get("premise") or "").strip()
     hypothesis = (payload.get("hypothesis") or "").strip()
@@ -62,13 +74,46 @@ def predict():
             {"error": f"model {model!r} is not wired up yet — only OracleNet is live"}
         ), 501
 
-    try:
-        result = PREDICTOR.predict(premise, hypothesis)
-    except Exception as e:
-        log.exception("predict failed")
-        return jsonify({"error": str(e)}), 500
+    def event_stream():
+        events: queue.Queue = queue.Queue()
+        SENTINEL = object()
+        outcome = {}
 
-    return jsonify({"model": model, **result.to_dict()})
+        def on_progress(ev: dict) -> None:
+            events.put({"type": "progress", **ev})
+
+        def worker() -> None:
+            try:
+                with _PREDICT_LOCK:
+                    result = PREDICTOR.predict(
+                        premise, hypothesis, progress_callback=on_progress
+                    )
+                outcome["result"] = result.to_dict()
+            except Exception as e:  # noqa: BLE001
+                log.exception("predict failed")
+                outcome["error"] = str(e)
+            finally:
+                events.put(SENTINEL)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+        while True:
+            ev = events.get()
+            if ev is SENTINEL:
+                break
+            yield json.dumps(ev) + "\n"
+
+        if "error" in outcome:
+            yield json.dumps({"type": "error", "error": outcome["error"]}) + "\n"
+        else:
+            yield json.dumps(
+                {"type": "result", "model": model, **outcome["result"]}
+            ) + "\n"
+
+    return Response(
+        stream_with_context(event_stream()),
+        mimetype="application/x-ndjson",
+    )
 
 
 if __name__ == "__main__":

@@ -97,6 +97,7 @@ function App() {
   const [loading, setLoading] = React.useState(false);
   const [result, setResult] = React.useState(null);
   const [rawLog, setRawLog] = React.useState(null);
+  const [stage, setStage] = React.useState(null);
 
   const isEditorial = tweaks.theme === 'editorial';
 
@@ -105,9 +106,12 @@ function App() {
     setLoading(true);
     setResult(null);
     setRawLog(null);
+    setStage(null);
 
     if (model !== 'OracleNet') {
       // OracleTF not wired up yet — keep prototype stub.
+      const stubStages = ['Preparing input', 'Pre-computing embeddings', 'Running OracleTF inference'];
+      stubStages.forEach((label, i) => setTimeout(() => setStage(label), 200 + i * 500));
       setTimeout(() => {
         const conf = 0.72 + Math.random() * 0.26;
         const isEntailment = Math.random() > 0.4;
@@ -124,8 +128,9 @@ function App() {
         };
         setResult({ ...stubData });
         setRawLog(stubData);
+        setStage(null);
         setLoading(false);
-      }, 800 + Math.random() * 1200);
+      }, 1800);
       return;
     }
 
@@ -135,17 +140,46 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ premise, hypothesis, model }),
       });
-      const data = await resp.json();
-      setRawLog(data);
-      if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+      if (!resp.ok && resp.headers.get('content-type')?.includes('application/json')) {
+        const err = await resp.json();
+        throw new Error(err.error || `HTTP ${resp.status}`);
+      }
+      if (!resp.body) throw new Error('streaming not supported by this browser');
+
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      let finalEvent = null;
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        let nl;
+        while ((nl = buf.indexOf('\n')) >= 0) {
+          const line = buf.slice(0, nl).trim();
+          buf = buf.slice(nl + 1);
+          if (!line) continue;
+          let ev;
+          try { ev = JSON.parse(line); } catch { continue; }
+          if (ev.type === 'progress') {
+            setStage(ev.label || ev.stage || 'Working');
+          } else {
+            finalEvent = ev;
+          }
+        }
+      }
+      if (!finalEvent) throw new Error('no result received from server');
+      setRawLog(finalEvent);
+      if (finalEvent.type === 'error') throw new Error(finalEvent.error);
       setResult({
-        label: data.label,
-        confidence: data.confidence,
-        model: data.model,
+        label: finalEvent.label,
+        confidence: finalEvent.confidence,
+        model: finalEvent.model,
       });
     } catch (e) {
       setResult({ error: e.message || String(e), model });
     } finally {
+      setStage(null);
       setLoading(false);
     }
   };
@@ -242,10 +276,18 @@ function App() {
       borderRadius: 20, padding: '5px 14px', cursor: 'pointer',
       transition: 'all 0.15s',
     },
+    spinnerRow: {
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      gap: 14, margin: '12px auto',
+    },
     spinner: {
       width: 28, height: 28, border: `3px solid ${t.border}`,
       borderTopColor: t.accent(hue), borderRadius: '50%',
-      animation: 'spin 0.8s linear infinite', margin: '12px auto',
+      animation: 'spin 0.8s linear infinite', flexShrink: 0,
+    },
+    stageText: {
+      fontSize: 13, fontFamily: t.mono, color: t.textMuted,
+      letterSpacing: '0.02em',
     },
     logCard: {
       background: t.surface, border: `1px dashed ${t.border}`,
@@ -310,7 +352,12 @@ function App() {
           </button>
         </div>
 
-        {loading && <div style={s.spinner}></div>}
+        {loading && (
+          <div style={s.spinnerRow}>
+            <div style={s.spinner}></div>
+            <div style={s.stageText}>{stage || 'Starting…'}</div>
+          </div>
+        )}
 
         {result && result.error && (
           <div style={{...s.resultCard(false), textAlign: 'left'}}>
