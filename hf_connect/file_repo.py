@@ -31,7 +31,7 @@ MODERN_BERTA_FILES = [
 TASK_SOURCE_FILES = [
     ModelFileManager("oracle_tf/task_source/model.safetensors", "./final_model_versions/taskSource/model.safetensors"),
     
-    ModelFileManager("oracle_tf/modern_berta/config.json", "./final_model_versions/modernBerta/config.json"),
-    ModelFileManager("oracle_tf/modern_berta/tokenizer_config.json", "./final_model_versions/modernBerta/tokenizer_config.json"),
-    ModelFileManager("oracle_tf/modern_berta/tokenizer.json", "./final_model_versions/modernBerta/tokenizer.json")
+    ModelFileManager("oracle_tf/task_source/config.json", "./final_model_versions/taskSource/config.json"),
+    ModelFileManager("oracle_tf/task_source/tokenizer_config.json", "./final_model_versions/taskSource/tokenizer_config.json"),
+    ModelFileManager("oracle_tf/task_source/tokenizer.json", "./final_model_versions/taskSource/tokenizer.json")
 ]
