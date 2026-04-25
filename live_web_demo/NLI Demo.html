@@ -8,6 +8,7 @@
 <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
 <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
 <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="text/babel" src="tweaks-panel.jsx"></script>
 <style>
   *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
@@ -100,12 +101,17 @@ function App() {
   const [stage, setStage] = React.useState(null);
   const [status, setStatus] = React.useState(null);
   const [expandedStatus, setExpandedStatus] = React.useState({});
+  const [publicUrl, setPublicUrl] = React.useState(null);
 
   React.useEffect(() => {
     fetch('/api/status')
       .then(r => r.json())
       .then(d => setStatus(d.groups))
       .catch(() => setStatus([]));
+    fetch('/api/public-url')
+      .then(r => r.json())
+      .then(d => setPublicUrl(d.url || ''))
+      .catch(() => setPublicUrl(''));
   }, []);
 
   const isEditorial = tweaks.theme === 'editorial';
@@ -465,34 +471,41 @@ function App() {
 
         <div className="qr-panel" style={s.qrCard}>
           <div style={s.label}>Scan to Open</div>
-          <svg viewBox="0 0 200 200" width="160" height="160" style={{background:'#fff', borderRadius:8, padding:8}}>
-            {(() => {
-              const size = 21;
-              const cell = 200 / (size + 2);
-              const offset = cell;
-              const hash = (x, y) => {
-                const v = ((x * 31 + y * 17 + 7) * 2654435761) >>> 0;
-                return v % 3 !== 0;
-              };
-              const cells = [];
-              const drawFinder = (ox, oy) => {
-                for (let r = 0; r < 7; r++) for (let c = 0; c < 7; c++) {
-                  const isBorder = r === 0 || r === 6 || c === 0 || c === 6;
-                  const isInner = r >= 2 && r <= 4 && c >= 2 && c <= 4;
-                  if (isBorder || isInner)
-                    cells.push(<rect key={`f${ox}-${oy}-${r}-${c}`} x={offset+(ox+c)*cell} y={offset+(oy+r)*cell} width={cell} height={cell} fill="#000" />);
-                }
-              };
-              drawFinder(0, 0); drawFinder(14, 0); drawFinder(0, 14);
-              for (let r = 0; r < size; r++) for (let c = 0; c < size; c++) {
-                const inFinder = (r < 8 && c < 8) || (r < 8 && c > 12) || (r > 12 && c < 8);
-                if (!inFinder && hash(r, c))
-                  cells.push(<rect key={`m${r}-${c}`} x={offset+c*cell} y={offset+r*cell} width={cell} height={cell} fill="#000" />);
-              }
-              return cells;
-            })()}
-          </svg>
-          <div style={s.qrUrl}>www.example.com</div>
+          {publicUrl === null && (
+            <div style={{...s.qrUrl, padding: '60px 0'}}>Loading…</div>
+          )}
+          {publicUrl === '' && (
+            <div style={{...s.qrUrl, padding: '40px 0'}}>
+              No public URL configured.<br/>
+              Start the server with FLARE_TUNNEL=1 or PUBLIC_URL=&hellip; to expose one.
+            </div>
+          )}
+          {publicUrl && (() => {
+            const qr = window.qrcode(0, 'M');
+            qr.addData(publicUrl);
+            qr.make();
+            const size = qr.getModuleCount();
+            const cell = 200 / (size + 2);
+            const offset = cell;
+            const cells = [];
+            for (let r = 0; r < size; r++) for (let c = 0; c < size; c++) {
+              if (qr.isDark(r, c))
+                cells.push(<rect key={`${r}-${c}`} x={offset+c*cell} y={offset+r*cell} width={cell} height={cell} fill="#000" />);
+            }
+            return (
+              <React.Fragment>
+                <a href={publicUrl} target="_blank" rel="noopener noreferrer" aria-label="Open public URL">
+                  <svg viewBox="0 0 200 200" width="160" height="160" style={{background:'#fff', borderRadius:8, padding:8, display:'block'}}>
+                    {cells}
+                  </svg>
+                </a>
+                <a href={publicUrl} target="_blank" rel="noopener noreferrer"
+                   style={{...s.qrUrl, color: t.accent(hue), textDecoration: 'none'}}>
+                  {publicUrl.replace(/^https?:\/\//, '')}
+                </a>
+              </React.Fragment>
+            );
+          })()}
         </div>
 
         <div className="status-panel" style={s.statusCard}>

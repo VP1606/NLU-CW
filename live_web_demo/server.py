@@ -16,8 +16,10 @@ Then open: http://localhost:8765/NLI%20Demo.html
 
 from __future__ import annotations
 
+import atexit
 import json
 import logging
+import os
 import queue
 import sys
 import threading
@@ -70,6 +72,31 @@ except FileNotFoundError as e:
 # one prediction can run at a time. A lock keeps concurrent requests serial
 # regardless of which model is selected.
 _PREDICT_LOCK = threading.Lock()
+
+
+# Public URL for the QR panel. Either:
+#   - FLARE_TUNNEL=1 in the environment → start a Cloudflare quick tunnel via
+#     flaredantic and use the *.trycloudflare.com URL it returns, OR
+#   - PUBLIC_URL=... in the environment → use it verbatim.
+PUBLIC_URL: str | None = os.environ.get("PUBLIC_URL") or None
+PORT = int(os.environ.get("PORT", "8765"))
+
+if not PUBLIC_URL and os.environ.get("FLARE_TUNNEL") == "1":
+    try:
+        from flaredantic import FlareConfig, FlareTunnel  # noqa: E402
+
+        log.info("Starting Cloudflare quick tunnel on port %d...", PORT)
+        _tunnel = FlareTunnel(FlareConfig(port=PORT, verbose=False))
+        PUBLIC_URL = _tunnel.start()
+        log.info("Public URL: %s", PUBLIC_URL)
+        atexit.register(_tunnel.stop)
+    except Exception as e:  # noqa: BLE001
+        log.warning("Failed to start Cloudflare tunnel: %s", e)
+
+
+@app.get("/api/public-url")
+def public_url():
+    return jsonify({"url": PUBLIC_URL})
 
 
 @app.get("/")
@@ -185,4 +212,7 @@ def predict():
 
 
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=8765, debug=False, use_reloader=False)
+    # Bind 0.0.0.0 when a tunnel is exposing this server so Cloudflare can
+    # reach it; otherwise stay on loopback.
+    host = "0.0.0.0" if os.environ.get("FLARE_TUNNEL") == "1" else "127.0.0.1"
+    app.run(host=host, port=PORT, debug=False, use_reloader=False)
