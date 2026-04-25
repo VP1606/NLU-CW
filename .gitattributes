@@ -1,2 +1,1 @@
-*.npz filter=lfs diff=lfs merge=lfs -text
 ModernBERT-Large.zip filter=lfs diff=lfs merge=lfs -text
